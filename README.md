@@ -39,6 +39,8 @@
 2. **Approach**: 
    - **Dataset**: Label dataset of iPSC images categorized by health (contamination and differentiation) status.
    - Publically availible data was used for training from: (Mamaeva et al 2022)
+   - This data is in the repository directory entitled `model_data`
+      - All data files are 256 x 255 png images and can be used for testing modules. 
       
    - **Preprocessing**: Standardize image sizes, normalize pixel values, and augment dataset to avoid overfitting. Image inputs currently accepted are 256 x 256 pixel png images. 
    - The image preprocessing steps have been tested with this model: 
@@ -56,7 +58,7 @@
 
       ![Loss function, Validation, training](Stemcell_classifier/metrics/Error_loss_Validation_training.png)
 
-    - Fine tuning of model can be performed using the `training.ipynb` notebool  
+    - Fine tuning of model can be performed using the `training.ipynb` notebook 
 
 3. **Libraries**: 
 
