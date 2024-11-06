@@ -1,6 +1,5 @@
-# main.py
-
-from cellpose import models #not sure how to import this rn
+#pip install openpyxl
+from cellpose import models 
 import numpy as np
 import pandas as pd
 import os
@@ -37,6 +36,7 @@ model = models.Cellpose(model_type='nuclei')
 
 # Find the first frame to segment (smallest frame number) 
 first_frame_number = min(tiff_images.keys())
+print(first_frame_number)
 first_image = tiff_images[first_frame_number]
 
 # Ensure the image is in the correct format (convert to float32 if necessary)
@@ -46,31 +46,51 @@ if first_image.dtype != np.float32:
 # Run the CellPose segmentation on the first frame
 masks, flows, styles, diams = model.eval(first_image, channels=[0, 0], diameter= 100.0, flow_threshold =0.5)  # [0, 0] for grayscale
 
+# Get masks
+num_masks = len(set(masks.flatten())) - (1 if 0 in masks else 0)
+
 # Optionally: Display the result for the first frame
+print(num_masks)
 plt.figure(figsize=(8, 8))
-plt.imshow(first_image, cmap='gray')
+plt.imshow(first_image[0], cmap='gray')
 plt.imshow(masks, alpha=0.5)
 plt.title(f'Segmented frame {first_frame_number}')
 plt.show()
+plt.savefig('segmented_frame.png')
+plt.close()
 
-# Prepare the data to be saved
-#read file name
-image_data = tiff.imread(file_path)
+# Run a loop to segment all tiff files in the provided directory
+# Create dictionary to store image and number of masks 
+data = {}
+frame_number = list(tiff_images.keys())
 
-data = {
-    'image_name': [image_data],
-    'masks': [masks],
-}
+
+# Run cellpose on all files in the directory
+
+for img in frame_number:
+    img_iterate = tiff_images[img]
+    # Ensure the image is in the correct format (convert to float32 if necessary)
+    if img_iterate.dtype != np.float32:
+        img_iterate = img_iterate.astype(np.float32)
+        
+    # Run the CellPose segmentation on the frame
+    masks, flows, styles, diams = model.eval(img_iterate, channels=[0, 0], diameter= 100.0, flow_threshold =0.5)  # [0, 0] for grayscale
+    
+    num_masks = len(set(masks.flatten())) - (1 if 0 in masks else 0)
+
+    #add to dictionary
+    data[img] = [num_masks]
+    
+print(data)
 
 # Convert the data to a DataFrame
 df = pd.DataFrame(data)
 
 # Specify the output Excel file path
-output_excel_path = "segmentation_output.xlsx"
+output_excel_path = "C:\Users\laure\OneDrive - UCB-O365\FALL 24 CLASSES\SOFTWARE\segmentation_output.xlsx"
 
 # Save the DataFrame to an Excel file
 df.to_excel(output_excel_path, index=False)
 
 print(f"Segmentation results saved to {output_excel_path}")
 
-# Now you have segmented the first frame and visualized it
