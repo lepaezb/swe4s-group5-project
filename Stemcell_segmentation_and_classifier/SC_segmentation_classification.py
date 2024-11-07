@@ -1,134 +1,162 @@
-import cv2
-from cellpose import models 
-from keras.applications import ResNet50
-from keras.layers import Dense, GlobalAveragePooling2D
-from keras.models import Model
-from keras.preprocessing.image import ImageDataGenerator
-import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import os
-import tensorflow as tf
+import cv2
+import numpy as np
+from cellpose import models as cp_models
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torchvision import models, transforms
+from PIL import Image
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.model_selection import train_test_split
 
-# --- 1. Image Loading and Preprocessing ---
+# --- 1. Image Loading and Label Extraction ---
 def load_images(directory):
-    """Loads images and labels from the given directory."""
-    images = []
-    labels = []
-    filenames = []
+    """Loads images from the given directory and extracts labels based on filenames."""
+    image_paths, labels = [], []
     for filename in os.listdir(directory):
-        if filename.endswith('.png'):
+        if filename.endswith(('.png', '.jpg')):
             img_path = os.path.join(directory, filename)
-            img = cv2.imread(img_path)
-            images.append(img)
-            filenames.append(filename)
-
-            # Extract label from filename
-            if "good" in filename:
-                labels.append(0)  # 0 for 'good'
-            else:
-                labels.append(1)  # 1 for 'bad'
-    return images, labels, filenames
+            label = 0 if 'good' in filename.lower() else 1
+            image_paths.append(img_path)
+            labels.append(label)
+    return image_paths, labels
 
 # --- 2. Colony Segmentation with CellPose ---
-def segment_colonies(images):
-    """Segments iPSC colonies using CellPose."""
-    model = models.Cellpose(gpu=True, model_type='cyto')
-    segmented_images = []
-    for img in images:
-        masks, flows, styles, diams = model.eval(img, diameter=None, channels=[0, 0])
-        segmented_images.append(masks)
-    return segmented_images
+class ColonySegmenter:
+    def __init__(self, use_gpu=False):
+        self.model = cp_models.Cellpose(gpu=use_gpu, model_type='cyto')
 
+    def segment_colonies(self, image, diameter=30):
+        if len(image.shape) == 2 or image.shape[2] == 1:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        masks, _, _, _ = self.model.eval(image, diameter=diameter, channels=[0, 0])
+        return masks
 
-# --- 3. Feature Extraction ---
-def extract_features(segmented_images, original_images):
-    """Extracts features from segmented colonies."""
-    features = []
-    for i, masks in enumerate(segmented_images):
-        img = original_images[i]
-        for colony_id in range(1, np.max(masks) + 1):
-            colony_mask = (masks == colony_id).astype(np.uint8)
-            colony_img = cv2.bitwise_and(img, img, mask=colony_mask)
+# --- 3. Colony Extraction ---
+def extract_colonies(image, masks):
+    """Extracts individual colonies from the image based on segmentation masks."""
+    colonies = []
+    for colony_id in np.unique(masks)[1:]:  # Skip background
+        colony_mask = (masks == colony_id).astype(np.uint8)
+        x, y, w, h = cv2.boundingRect(colony_mask)
+        colony_img = cv2.bitwise_and(image[y:y+h, x:x+w], image[y:y+h, x:x+w], mask=colony_mask[y:y+h, x:x+w])
+        colonies.append(colony_img)
+    return colonies
 
-            # Calculate features (example: mean intensity, area)
-            mean_intensity = cv2.mean(colony_img, mask=colony_mask)[0]
-            area = np.sum(colony_mask)
-            # ... add more features (texture, morphology, etc.) ...
+# --- 4. Custom Dataset Class ---
+class ColonyDataset(Dataset):
+    def __init__(self, image_paths, labels, segmenter, transform=None):
+        self.colony_images, self.colony_labels = [], []
+        self.transform = transform
+        for img_path, label in zip(image_paths, labels):
+            image = cv2.imread(img_path)
+            if image is None:
+                print(f"Error loading image: {img_path}")
+                continue
+            masks = segmenter.segment_colonies(image)
+            colonies = extract_colonies(image, masks)
+            self.colony_images.extend(colonies)
+            self.colony_labels.extend([label] * len(colonies))
 
-            features.append([mean_intensity, area])  # ... other features ...
-    return features
+    def __len__(self):
+        return len(self.colony_images)
 
-# --- 4. Model Creation and Training ---
-def create_classification_model():
-    """Creates and compiles the CNN classification model."""
-    base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    x = Dense(1024, activation='relu')(x)
-    predictions = Dense(1, activation='sigmoid')(x)  # Binary classification (good/bad)
+    def __getitem__(self, idx):
+        image = cv2.cvtColor(self.colony_images[idx], cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(image)
+        if self.transform:
+            image = self.transform(image)
+        return image, self.colony_labels[idx]
 
-    model = Model(inputs=base_model.input, outputs=predictions)
+# --- 5. Data Transformations ---
+data_transforms = transforms.Compose([
+    transforms.Resize((128, 128)),  # Reduced size for faster processing
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 
-    for layer in base_model.layers:
-        layer.trainable = False
+# --- 6. Model Definition ---
+class iPSCClassifier(nn.Module):
+    def __init__(self):
+        super(iPSCClassifier, self).__init__()
+        self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)  # Use ResNet18 for lighter model
+        num_ftrs = self.resnet.fc.in_features
+        self.resnet.fc = nn.Linear(num_ftrs, 1)
 
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    def forward(self, x):
+        return self.resnet(x)
+
+# --- 7. Training Function ---
+def train_model(model, dataloader, criterion, optimizer, num_epochs=3):  # Fewer epochs for faster training
+    model.train()
+    for epoch in range(num_epochs):
+        running_loss = 0.0
+        for inputs, labels in dataloader:
+            inputs, labels = inputs.to(device), labels.to(device).float().unsqueeze(1)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item() * inputs.size(0)
+        epoch_loss = running_loss / len(dataloader.dataset)
+        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}')
     return model
 
-# --- 5. Annotation and Output ---
-def annotate_image(image, masks, predictions):
-    """Annotates the image with colony labels."""
-    for colony_id in range(1, np.max(masks) + 1):
-        colony_mask = (masks == colony_id).astype(np.uint8)
-        contours, _ = cv2.findContours(colony_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        x, y, w, h = cv2.boundingRect(contours[0])
-
-        # Get prediction label
-        label = "Good" if predictions[colony_id - 1][0] < 0.5 else "Bad"
-
-        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(image, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    return image
-
-def save_results(image, filename, predictions):
-    """Saves the annotated image and a text file with detailed information."""
-    cv2.imwrite(f"annotated_{filename}", image)
-
-    with open(f"results_{filename[:-4]}.txt", "w") as f:
-        f.write(f"Image: {filename}\n")
-        for i, pred in enumerate(predictions):
-            label = "Good" if pred[0] < 0.5 else "Bad"
-            confidence = (1 - pred[0]) * 100 if label == "Good" else pred[0] * 100
-            f.write(f"Colony {i+1}: {label} (Confidence: {confidence:.2f}%)\n")
+# --- 8. Model Evaluation ---
+def evaluate_model(model, dataloader, criterion):
+    model.eval()
+    test_loss = 0.0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs, labels = inputs.to(device), labels.to(device).float().unsqueeze(1)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            test_loss += loss.item() * inputs.size(0)
+            predictions = (outputs > 0).float()  # Convert to binary 0/1 predictions
+            correct += (predictions == labels).sum().item()
+            total += labels.size(0)
+    accuracy = correct / total
+    print(f'Test Loss: {test_loss / total:.4f}, Test Accuracy: {accuracy * 100:.2f}%')
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    image_directory = 'path/to/your/images'
-    images, labels, filenames = load_images(image_directory)
-    segmented_images = segment_colonies(images)
+    device = torch.device("cpu")
+    segmenter = ColonySegmenter(use_gpu=False)
+    image_directory = 'model_data/H9p36/'
+    image_paths, labels = load_images(image_directory)
 
-    # --- Prepare data for training ---
-    all_features = []
-    all_labels = []
-    for i, img in enumerate(images):
-        features = extract_features([segmented_images[i]], [img])
-        all_features.extend(features)
-        all_labels.extend([labels[i]] * len(features))  # Duplicate label for each colony in the image
+    # Split data into training (80%) and testing (20%) sets
+    train_paths, test_paths, train_labels, test_labels = train_test_split(
+        image_paths, labels, test_size=0.2, random_state=42
+    )
 
-    all_features = np.array(all_features)
-    all_labels = np.array(all_labels)
+    # Create Datasets and Dataloaders
+    train_dataset = ColonyDataset(train_paths, train_labels, segmenter, transform=data_transforms)
+    test_dataset = ColonyDataset(test_paths, test_labels, segmenter, transform=data_transforms)
+    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=1)
+    test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False, num_workers=1)
 
-    # --- Create and train the model ---
-    model = create_classification_model()
+    # Initialize the model, criterion, and optimizer
+    model = iPSCClassifier().to(device)
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    # Normalize features (important for neural networks)
-    all_features = tf.keras.utils.normalize(all_features, axis=1)
+    # Load or train the model
+    model_weights_path = 'model_weights.pth'
+    if os.path.exists(model_weights_path):
+        model.load_state_dict(torch.load(model_weights_path, map_location=device))
+        print("Loaded pre-trained model weights.")
+    else:
+        print("Training the model from scratch.")
+        model = train_model(model, train_dataloader, criterion, optimizer, num_epochs=3)
+        torch.save(model.state_dict(), model_weights_path)
 
-    model.fit(all_features, all_labels, epochs=10, batch_size=32)  # Adjust epochs and batch_size
-
-    # --- Make predictions and annotate ---
-    for i, img in enumerate(images):
-        features = extract_features([segmented_images[i]], [img])
-        features = tf.keras.utils.normalize(np.array(features), axis=1)  # Normalize features
-        predictions = model.predict(features)
-        annotated_image = annotate_image(img.copy(), segmented_images[i], predictions)
-        save_results(annotated_image, filenames[i], predictions)
+    # Evaluate the model on the test dataset
+    evaluate_model(model, test_dataloader, criterion)
