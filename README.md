@@ -162,4 +162,4 @@ mamba install opencv-python cellpose torch torchvision numpy Pillow scikit-learn
 - `data_transforms`: Image transformations for data augmentation and normalization.
 - `iPSCClassifier`: A ResNet18-based CNN model for classification.
 - `train_model()`: Trains the model using the provided dataloader.
-- `evaluate_model()`: Evaluates the trained model on a test dataset.
+- `evaluate_model()`: Evaluates the trained model on a test dataset
