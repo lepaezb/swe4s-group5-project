@@ -140,7 +140,7 @@ def plot_metrics(t, accuracy, precision, recall, F1, save_dir="./metrics"):
         # Ensure the directory exists
         os.makedirs(save_dir, exist_ok=True)
         # Create a path for the file
-        file_path = os.path.join(save_dir, "metrics_plot.png")
+        file_path = os.path.join(save_dir, "Accuracy_F1_Recall_Precision_plot.png")
         plt.savefig(file_path)
         print(f"Plot saved to {file_path}")
 
@@ -169,10 +169,10 @@ def main():
     t = np.linspace(1, len(y_valid), len(y_valid))
 
     # Plot training and validation scores with confidence intervals
-    plot_scores_with_ci(t, y_train, y_valid, ci_train, ci_valid, save_dir="./metrics")
+    plot_scores_with_ci(t, y_train, y_valid, ci_train, ci_valid, save_dir="./metrics_plots")
 
     # Plot accuracy, precision, recall, and F1
-    plot_metrics(t, accuracy, precision, recall, F1, save_dir="./metrics")
+    plot_metrics(t, accuracy, precision, recall, F1, save_dir="./metrics_plots")
 
 
 if __name__ == "__main__":
