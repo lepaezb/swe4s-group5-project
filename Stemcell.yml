@@ -1,4 +1,0 @@
-name: myenv
-channels:
-  - conda-forge
-prefix: /opt/homebrew/Caskroom/miniforge/base/envs/myenv
