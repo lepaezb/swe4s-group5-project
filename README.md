@@ -41,6 +41,7 @@ The goal is to train a machine learning (ML) model that takes in images of induc
       ```sh 
       python plot_training_metrics.py
       ```
+   - Alternative CNN architectures are provided in `model_architectures.py` and can be adapted into the `training.py` module and the `classify_directory.py` and `classify_image.py` modules
 
 
 4. **Libraries**: 
