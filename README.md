@@ -33,7 +33,7 @@ The goal is to train a machine learning (ML) model that takes in images of induc
       ![Loss function, Validation, training](Stemcell_classifier/metrics_plots/training_validation_plot.png)
 
    - Fine tuning of model can be performed using the `Training.py` module. 
-   - To train on your own images simple update the directory path at the top of the module to a directory containing your images then run: 
+   - To train on your own images simply update the directory path at the top of the module to a directory containing your images. Make sure file named for images contain ground-truth "good" of "bad" annotations (example: name_good.png or name_bad). To initiate training run: 
       ```sh
       python Training.py
       ```
