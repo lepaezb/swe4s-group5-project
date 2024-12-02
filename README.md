@@ -24,26 +24,42 @@ The goal is to train a machine learning (ML) model that takes in images of induc
    - histogram equalization
 
 3. **Model**: 
- - An existing convolutional neural network was trained using publically availible data for the classification of iPSC colonies as healthy or unhealthy. Training was allowed to continue for ~ 80 epochs and 25% of data was witheld and used for validating the model. 
- - This model has been published: Mamaeva, A.; Krasnova, O.; Khvorova, I.; Kozlov, K.; Gursky, V.; Samsonova, M.; Tikhonova, O.; Neganova, I. Quality Control of Human Pluripotent Stem Cell Colonies by Computational Image Analysis Using Convolutional Neural Networks. Int. J. Mol. Sci. 2023, 24, 140. https://doi.org/10.3390/ijms24010140
+ - A convolutional neural network was trained using publically availible data for the classification of iPSC colonies as healthy or unhealthy. Training was allowed to continue for 80 epochs and 20% of data was witheld and used for validating the model. 
+ - This model has been published and was adapted here for implementation as software: Mamaeva, A.; Krasnova, O.; Khvorova, I.; Kozlov, K.; Gursky, V.; Samsonova, M.; Tikhonova, O.; Neganova, I. Quality Control of Human Pluripotent Stem Cell Colonies by Computational Image Analysis Using Convolutional Neural Networks. Int. J. Mol. Sci. 2023, 24, 140. https://doi.org/10.3390/ijms24010140
     
-   - Model metrics after initial training: 
-      ![Accuracy, Precision, Recal by Epoch](Stemcell_classifier/metrics/Training_metrics.png)
+   - Model metrics after training: 
+      ![Accuracy, Precision, Recal by Epoch](Stemcell_classifier/metrics_plots/Accuracy_F1_Recall_Precision_plot.png)
 
-      ![Loss function, Validation, training](Stemcell_classifier/metrics/Error_loss_Validation_training.png)
+      ![Loss function, Validation, training](Stemcell_classifier/metrics_plots/training_validation_plot.png)
 
-   - Fine tuning of model can be performed using the `training.ipynb` notebook 
+   - Fine tuning of model can be performed using the `Training.py` module. 
+   - To train on your own images simple update the directory path at the top of the module to a directory containing your images then run: 
+      ```sh
+      python Training.py
+      ```
+   - To plot training metrics run: 
+      ```sh 
+      python plot_training_metrics.py
+      ```
+   - Alternative CNN architectures are provided in `model_architectures.py` and can be adapted into the `training.py` module and the `classify_directory.py` and `classify_image.py` modules
+
 
 4. **Libraries**: 
 
 - PyTorch for model building and training.
 - OpenCV, PIL, scikitimage for image preprocessing.
 - pandas and numpy for data manipulation
-- matplotlib and plotly 
+- matplotlib
 
-- An environment can be created using the StemCell.yml file included in the Stemcell_classifier directory by running 
+- We reccomend using mamba for package management. 
+
+- An environment can be created using the StemCell.yaml file using mamba by running: 
    ```sh
-   mamba env create -f Stemcell.yml
+   mamba env create -f Stemcell.yaml
+   ```
+- Activate the environment with 
+   ```sh
+   mamba activate Stemcell
    ```
 
 ### Implementation
@@ -51,14 +67,21 @@ The goal is to train a machine learning (ML) model that takes in images of induc
 - Train or fine-tune an ML model on your labeled dataset.
 - Develop a function that takes a new image, runs it through the trained model, and returns a health assessment (healthy, undifferentiated, etc.).
 
-- Currently: a binary classifier exists to query the existing model. To run this from the command line cd to the Stemcell_classifier directory and select a pre-trained model. 
+- Currently: a binary classifier exists to query the existing model. To run this from the command line cd to the Stemcell_classifier directory and select a pre-trained model. We reccomend Simple_model_best_model_0.92.pt to start. 
 - To classify a single image the following can be run in the command line: 
    ```sh
-   python classifier_single.py path_to_your_model.pth path_to_your_image.png
+   python classify_image.py --model-path "path_to_your_model.pt" \
+                        --image-path "path_to_your_image.png" \
+                        --threshold (optional) default = 0.7
    ```
-- To classify all images in a directory and get outputs in a csv file, the following can be run in the command line: 
+- To classify all images in a directory and get outputs in a csv file, the following can be run in the command line (update with a path to the model and input directory you want: 
    ```sh
-   python classifier_multi.py path_to_your_model.pth path_to_your_image.jpg path_to_output_predictions.csv
+   python classify_directory.py --model-path ./models/Simple_model_best_model_0.92.pt \
+                           --input-directory ./model_data/H9p36 \
+                           --output-file ./classification_results.csv \
+                           --threshold 0.625 \
+                           --batch-size 64 \
+                           --num-workers 0
    ```
 
 ## Tool # 2: Cell Segmentation using CellPose

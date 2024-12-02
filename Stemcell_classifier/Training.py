@@ -1,37 +1,51 @@
-#!/usr/bin/env python
-# coding: utf-8
+#  This module can be used to train the VG13 model on the dataset of stem cells images.
+#  To train with your own data the input directory just needs to be updated to the directory containing your images.
+#  This model will train on the images in the input directory and save the best model based on the F1 score.
+#  The models and training metrics will be saved in the models directory.
 
-# ## Attach libraries
 
+# 
+#  This model was origionally created and reported by Mamaeva et al. (2022) in the paper 
+#       "Quality Control of Human Pluripotent Stem Cell Colonies by Computational Image Analysis Using Convolutional Neural Networks".
+#  Here their model has been adapted for application in the StemCell_classifier software.package. 
+#  The model was trained on images of human pluripotent stem cell colonies to classify them as good or bad.
+
+## Importing Libraries
 import pandas
 import matplotlib.pyplot as plt
 import plotly.express as px
 import numpy as np
-
 import torch 
 import torchvision 
 import torchvision.transforms as transforms 
 import torch.nn as nn 
 import torch.nn.functional as F 
 import torch.optim as optim 
-from tqdm import tqdm
-
-
-# ## Mount Google Drive
-
-#from google.colab import drive
-#drive.mount('/content/drive/')
-
-
-# ## Scale images to the same dimensions
-
+import albumentations as A
 import os
+from tqdm import tqdm
+from PIL import Image
+from skimage.color import rgba2rgb
+from skimage.util import img_as_ubyte
+from skimage import exposure
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import Dataset
+from torchvision import datasets
+from PIL import Image
+from skimage.color import rgb2gray
+from skimage.util import img_as_ubyte
+from skimage import exposure
+from skimage.io import imread
+from sklearn.metrics import confusion_matrix
+from collections import defaultdict
+from torch.nn.functional import normalize
 
+## Load and preprocess data
 photos_x10, labels_x10 = [], []
 photos_x40, labels_x40 = [], []
 
-# directory = os.path.join('/content/drive/MyDrive' ,'H9p36/H9p36')
-directory = './H9p36'
+directory = './model_data/H9p36' #for training, update path to directory containing your images 
 files = os.listdir(directory)
 for file in files:
   filename = file.split('.')
@@ -46,12 +60,16 @@ for file in files:
         photos_x40.append(file)
         labels_x40.append(picture[1])
 
-len(photos_x40)
-
-from PIL import Image
-from skimage.color import rgba2rgb
-
 def resize(dataset):
+  """
+    Resize a list of images to a fixed size of 256x256.
+
+    Args:
+    - dataset (list): A list of image file names (strings).
+
+    Returns:
+    - List of resized images in NumPy array format.
+  """
   resize_images = []
   for data in dataset:
     image = Image.open(os.path.join(directory, data))
@@ -69,10 +87,6 @@ plt.imshow(resize_photos_x40[-1])
 
 
 # ## Histogram equalization
-
-from skimage.util import img_as_ubyte
-from skimage import exposure
-
 equalize_photos_x40 = []
 
 for i in resize_photos_x40:
@@ -81,87 +95,19 @@ for i in resize_photos_x40:
   equalize_photos_x40.append(img_rescale)
 
 
-# ## Convert to GrayScale
-
-from skimage.color import rgb2gray
-
-def GrayScale(dataset):
-  gray_img = []
-  for img in dataset:
-    gray = rgb2gray(img)
-    gray = np.expand_dims(gray, axis=2)
-    gray_img.append(gray)
-  return gray_img
-
-gray_photos_x40 = GrayScale(resize_photos_x40)
-
-
-# ## Binarization
-
-from skimage.filters import threshold_otsu
-
-otsu_photos_x40 = []
-
-for i in gray_photos_x40:
-  thresh = threshold_otsu(i)
-  binary = i > thresh
-  otsu_photos_x40.append(binary)
-
-plt.imshow(otsu_photos_x40[-1])
-
-
-# ## Normalization of images
-
-min_ = []
-max_ = []
-
-for photo in resize_photos_x40:
-  _max = 0
-  _min = 9999
-  for i in photo:
-    for j in i:
-      for k in j:
-        if k < _min:
-          _min = k
-        if k > _max:
-          _max = k
-  min_.append(_min)
-  max_.append(_max)
-
-
-import copy
-
-def my_normalize1(resize_photos_x40, min_, max_):
-  my = copy.deepcopy(resize_photos_x40)
-  for photo_id, (photo, _min, _max) in enumerate(zip(resize_photos_x40, min_, max_)):
-      my[photo_id] = (photo - _min) / (_max -_min)
-  return my
-
-normalize_photos_x40 = my_normalize1(resize_photos_x40, min_, max_)
-
-plt.imshow(normalize_photos_x40[-1])
-
-
-# ## Draw labeled images
-
-def beautiful_show_images(dataset, labels, necessary_count):
-  fig, axes = plt.subplots(1, necessary_count, figsize = (15, 15))
-  plt.gray()
-
-  for i in range(necessary_count):
-    tmp = np.random.randint(1, len(dataset))
-
-    axes[i].imshow(dataset[tmp])
-    axes[i].set_title(labels[tmp])
-
-beautiful_show_images(normalize_photos_x40, labels_x40, 3)
-
-
 # ## Split data into training and validation sets
-
-from sklearn.model_selection import train_test_split
-
 def train_val_split(dataset, labels):
+  """
+    Split dataset into training and validation sets.
+
+    Args:
+    - dataset (list): List of image data.
+    - labels (list): List of corresponding image labels.
+
+    Returns:
+    - X (dict): Dictionary with 'train' and 'val' keys containing the training and validation datasets.
+    - Labels (dict): Dictionary with 'train' and 'val' keys containing the corresponding labels.
+  """
   X_train, X_val, y_train, y_val = train_test_split(dataset, labels, test_size=0.2, random_state=1)
 
   X = {"train":np.array(X_train), "val":np.array(X_val)}
@@ -174,21 +120,16 @@ X, Labels = train_val_split(photos_x40, labels_x40)
 
 
 # ## Wrap data by DataLoader
-
-from torch.utils.data import DataLoader, TensorDataset
-from torch.utils.data import Dataset
-from torchvision import datasets
-from PIL import Image
-from skimage.color import rgb2gray
-from skimage.util import img_as_ubyte
-from skimage import exposure
-
-
-from skimage.io import imread
-
-import albumentations as A
-
 class ClassificationDataSet(Dataset):
+    """
+    A custom dataset class to handle image loading and augmentation for training and validation.
+
+    Args:
+    - inputs (list): List of image file names.
+    - labels (list): List of corresponding image labels.
+    - transform (albumentations.Compose, optional): Data augmentation transform to be applied.
+    - phase (str, optional): 'train' or 'val' to determine which set of transformations to apply.
+    """
     def __init__(self, inputs: list, labels, transform=None, phase='train'):
         transform1 = A.Compose([
           A.RandomCrop(width=256, height=256),
@@ -211,12 +152,34 @@ class ClassificationDataSet(Dataset):
           self.transform =  transform2
 
     def augmentation(self, x):
-      return self.transform(image = x)["image"]
+        """
+        Apply data augmentation to the input image.
+
+        Args:
+        - x (np.array): Input image array.
+
+        Returns:
+        - Augmented image.
+        """
+        return self.transform(image = x)["image"]
 
     def __len__(self):
+        """
+        Returns the total number of samples in the dataset.
+        """
         return len(self.inputs)
 
     def __getitem__(self, index: int):
+        """
+        Retrieve a single sample (image and label) from the dataset.
+
+        Args:
+        - index (int): Index of the sample.
+
+        Returns:
+        - torch.Tensor: The augmented and processed image tensor.
+        - torch.Tensor: The label of the image.
+        """
         input_ID = self.inputs[index]
         x = Image.open(os.path.join(directory, input_ID))   
 
@@ -230,7 +193,7 @@ class ClassificationDataSet(Dataset):
           x = x.resize((256, 256), Image.LANCZOS)
           x = np.array(x)
 
-
+      # Histogram equalization
         img = img_as_ubyte(x)
         x = exposure.equalize_hist(img)
         x = rgb2gray(x)
@@ -242,30 +205,43 @@ class ClassificationDataSet(Dataset):
         y = y.type(torch.float)
 
         return torch.from_numpy(x).type(torch.float).permute(2,0,1), y
-
+    
+# Define the batch size and number of workers
 batch_size = 64
 num_workers = 0
 
+# Convert labels to numerical values
 for key in Labels:
   Labels[key][Labels[key]=='good'] = 1
   Labels[key][Labels[key]=='bad'] = 0
 
+# Create the training and validation datasets
 trainset = ClassificationDataSet(X['train'], Labels['train'], transform=True, phase='train')
 valset = ClassificationDataSet(X['val'], Labels['val'], transform=True, phase='val')
 
+# Create the training and validation dataloaders
 dataloaders = {
     'train': torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=num_workers),
     'val': torch.utils.data.DataLoader(valset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     }
+
 # Define the model directory
-model_directory = "./Experiments/VGG13_histeq_tff"
+model_directory = "./models"
 
-# Create the directory if it does not exist
-os.makedirs(model_directory, exist_ok=True)
-
-# ## CNN VGG13 Implementation
-
+## CNN VGG13 Implementation
 def conv3x3(in_channels, out_channels, pool=False, dropout=None):
+    """
+    A helper function to create a 3x3 convolutional block with optional pooling and dropout.
+
+    Args:
+    - in_channels (int): Number of input channels.
+    - out_channels (int): Number of output channels.
+    - pool (bool, optional): Whether to apply max pooling. Default is False.
+    - dropout (float, optional): Dropout rate. Default is None.
+
+    Returns:
+    - nn.Sequential: A sequential block of layers.
+    """
     layers = [
         nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
         nn.PReLU(),
@@ -280,10 +256,14 @@ def conv3x3(in_channels, out_channels, pool=False, dropout=None):
 
     return nn.Sequential(*layers)
 
-
+# Define the CNN architecture
 class Net(nn.Module):
-    ''' VGG13 convolutional neural network'''
-	
+    """
+    A simple VGG13-style CNN architecture for image classification.
+
+    Args:
+    - thickness (int): The base number of filters in the first convolutional layer. Default is 4.
+    """
     def __init__(self, thickness=4):
 
         super(Net, self).__init__()
@@ -334,702 +314,9 @@ class Net(nn.Module):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
 net = Net(4)
 net = net.to(device=device)
-
-
-# ## VGG12
-
-def conv3x3(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((2, 2)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-class Net(nn.Module):
-    '''VGG12 convolutional neural network'''
-	
-    def __init__(self, thickness=4):
-
-        super(Net, self).__init__()
-        self.conv1 = conv3x3(in_channels=3, out_channels=thickness)
-        self.conv2 = conv3x3(in_channels=thickness, out_channels=thickness, pool=True)
-
-        self.conv3 = conv3x3(in_channels=thickness, out_channels=thickness*2)
-        self.conv4 = conv3x3(in_channels=thickness*2, out_channels=thickness*2, pool=True)
-
-        self.conv5 = conv3x3(in_channels=thickness*2, out_channels=thickness*4)
-        self.conv6 = conv3x3(in_channels=thickness*4, out_channels=thickness*4, pool=True)
-
-        self.conv7 = conv3x3(in_channels=thickness*4, out_channels=thickness*8)
-        self.conv8 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv9 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.conv10 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv11 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.fc1 = nn.Linear(thickness * 8 * 4 * 4, 1)
-
-    def forward(self, x):
-        x = self.conv1(x)    # 16 256 256
-        x = self.conv2(x)          
-
-        x = self.conv3(x)   # 32  128 128
-        x = self.conv4(x)   
-
-        x = self.conv5(x)   # 64  64 64
-        x = self.conv6(x) 
-
-        x = self.conv7(x)   # 128 32 32
-        x = self.conv8(x)   
-
-        x = self.conv9(x) # 128 16 16
-        x = self.conv10(x)
-
-        x = self.conv11(x) # 128 8 8
-        
-        x = x.reshape(x.shape[0], -1)
-
-        x = self.fc1(x)
-        return torch.sigmoid(x)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
-net = Net()
-net = net.to(device=device)
-
-
-# ## VGG12-Pool4
-
-def conv3x3_maxpool4(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((4, 4)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-def conv3x3(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((2, 2)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-class Net(nn.Module):
-    ''' VGG12-Pool4 convolutional neural network'''
-	
-    def __init__(self, thickness=4):
-
-        super(Net, self).__init__()
-        self.conv1 = conv3x3(in_channels=3, out_channels=thickness)
-        self.conv2 = conv3x3_maxpool4(in_channels=thickness, out_channels=thickness, pool=True)
-
-        self.conv3 = conv3x3(in_channels=thickness, out_channels=thickness*2)
-        self.conv4 = conv3x3(in_channels=thickness*2, out_channels=thickness*2, pool=True)
-
-        self.conv5 = conv3x3(in_channels=thickness*2, out_channels=thickness*4)
-        self.conv6 = conv3x3(in_channels=thickness*4, out_channels=thickness*4, pool=True)
-
-        self.conv7 = conv3x3(in_channels=thickness*4, out_channels=thickness*8)
-        self.conv8 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv9 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.conv10 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv11 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.fc1 = nn.Linear(thickness * 8 * 2 * 2, 1)
-
-    def forward(self, x):
-        x = self.conv1(x)   # 16 256 256
-        x = self.conv2(x)   # 16 64 64 
-
-        x = self.conv3(x)   # 32 64 64
-        x = self.conv4(x)   # 32 32 32 
-
-        x = self.conv5(x)   # 64 32 32
-        x = self.conv6(x)   # 64 16 16
-
-        x = self.conv7(x)   # 128 16 16
-        x = self.conv8(x)   # 128 8 8
-
-        x = self.conv9(x)   # 128 8 8
-        x = self.conv10(x)  # 128 4 4
-
-        x = self.conv11(x)  # 128 4 4
-
-        x = x.reshape(x.shape[0], -1)
-
-        x = self.fc1(x)
-        return torch.sigmoid(x)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
-net = Net(4)
-net = net.to(device=device)
-
-
-# ## Model with Skip Сonnection
-
-from torch.nn.modules.conv import Conv2d
-def conv3x3(in_channels, out_channels, rel=False, batch=False, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-    ]
-
-    if rel:
-        layers.append(nn.PReLU(out_channels))
-
-    if batch:
-        layers.append(nn.BatchNorm2d(out_channels))
-
-    if pool:
-        layers.append(nn.MaxPool2d((2, 2)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-class Net(nn.Module):
-    ''' CNN with skip connection'''
-	
-    def __init__(self, thickness=4):
-
-        super(Net, self).__init__()
-        self.conv1 = conv3x3(in_channels=3, out_channels=thickness, rel=True, batch=True)
-        self.conv2 = conv3x3(in_channels=thickness, out_channels=thickness, batch=True, pool=True)
-        self.conv_identity1 = Conv2d(in_channels=3, out_channels=thickness, kernel_size=(1, 1), stride=2)
-        self.batch1 = nn.BatchNorm2d(thickness)
-        self.relu1 = nn.PReLU(thickness)
-
-        self.conv3 = conv3x3(in_channels=thickness, out_channels=thickness*2, rel=True, batch=True)
-        self.conv4 = conv3x3(in_channels=thickness*2, out_channels=thickness*2, batch=True, pool=True)
-        self.conv_identity2 = Conv2d(in_channels=thickness, out_channels=thickness*2, kernel_size=(1, 1), stride=2)
-        self.batch2 = nn.BatchNorm2d(thickness*2)
-        self.relu2 = nn.PReLU(thickness*2)
-
-        self.conv5 = conv3x3(in_channels=thickness*2, out_channels=thickness*4, rel=True, batch=True)
-        self.conv6 = conv3x3(in_channels=thickness*4, out_channels=thickness*4, batch=True, pool=True)
-        self.conv_identity3 = Conv2d(in_channels=thickness*2, out_channels=thickness*4, kernel_size=(1, 1), stride=2)
-        self.batch3 = nn.BatchNorm2d(thickness*4)
-        self.relu3 = nn.PReLU(thickness*4)
-
-        self.conv7 = conv3x3(in_channels=thickness*4, out_channels=thickness*8, rel=True, batch=True)
-        self.conv8 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, batch=True, pool=True)
-        self.conv_identity4 = Conv2d(in_channels=thickness*4, out_channels=thickness*8, kernel_size=(1, 1), stride=2)
-        self.batch4 = nn.BatchNorm2d(thickness*8)
-        self.relu4 = nn.PReLU(thickness*8)
-
-        self.conv9 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, rel=True, batch=True)
-        self.conv10 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, batch=True)
-        self.batch5 = nn.BatchNorm2d(thickness*8)
-        self.relu5 = nn.PReLU(thickness*8)
-      
-        self.conv11 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, rel=True, batch=True)
-        self.conv12 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, batch=True)
-        self.batch6 = nn.BatchNorm2d(thickness*8)
-        self.relu6 = nn.PReLU(thickness*8)
-	      
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.avgpool = nn.AvgPool2d(kernel_size=32)
-
-        self.rel = nn.PReLU()
-
-        self.fc1 = nn.Linear(thickness * 8 * 4 * 4, 1)
-
-    def forward(self, x):
-        a = x
-        x = self.conv1(x)    # 16 256 256
-        x = self.conv2(x) 
-        y = self.conv_identity1(a)
-        x = y + x
-        x = self.relu1(x)
-        x = self.batch1(x)
-        
-
-        a = x         
-        x = self.conv3(x)   # 32  128 128
-        x = self.conv4(x)
-        y = self.conv_identity2(a)
-        x = y + x
-        x = self.relu2(x)
-        x = self.batch2(x)
-   
-
-        a = x
-        x = self.conv5(x)   # 64  64 64
-        x = self.conv6(x) 
-        y = self.conv_identity3(a)
-        x = y + x
-        x = self.relu3(x)
-        x = self.batch3(x)
-
-        a = x
-        x = self.conv7(x)   # 128 32 32
-        x = self.conv8(x) 
-        y = self.conv_identity4(a)
-        x = y + x
-        x = self.relu4(x)
-        x = self.batch4(x)
-
-        a = x
-        x = self.conv9(x) # 128 16 16
-        x = self.conv10(x)
-        x = x + a
-        x = self.maxpool(x)
-        x = self.relu5(x)
-        x = self.batch5(x)
-
-        a = x
-        x = self.conv11(x) # 128 8 8
-        x = self.conv12(x) # 128 4 4
-        x = x + a
-        x = self.maxpool(x)
-        x = self.relu6(x)
-        x = self.batch6(x)
-
-        x = x.reshape(x.shape[0], -1)
-
-        x = self.fc1(x)
-        return torch.sigmoid(x)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
-net = Net(4)
-net = net.to(device=device)
-
-
-# ## Model with maxpool4*4 Skip Connection
-
-from torch.nn.modules.conv import Conv2d
-
-def conv3x3_maxpool4(in_channels, out_channels, rel=False, batch=False, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-    ]
-
-    if rel:
-        layers.append(nn.PReLU())
-
-    if batch:
-        layers.append(nn.BatchNorm2d(out_channels))
-
-    if pool:
-        layers.append(nn.MaxPool2d((4, 4)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-def conv3x3(in_channels, out_channels, rel=False, batch=False, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-    ]
-
-    if rel:
-        layers.append(nn.PReLU())
-
-    if batch:
-        layers.append(nn.BatchNorm2d(out_channels))
-
-    if pool:
-        layers.append(nn.MaxPool2d((2, 2)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-class Net(nn.Module):
-    ''' Model with maxpool4*4 Skip Connection'''
-	
-    def __init__(self, thickness=16):
-
-        super(Net, self).__init__()
-        self.conv1 = conv3x3(in_channels=1, out_channels=thickness, rel=True, batch=True)
-        self.conv2 = conv3x3_maxpool4(in_channels=thickness, out_channels=thickness, pool=True)
-        self.conv_identity1 = Conv2d(in_channels=1, out_channels=thickness, kernel_size=(1, 1), stride=4)
-        self.batch1 = nn.BatchNorm2d(thickness)
-
-        self.conv3 = conv3x3(in_channels=thickness, out_channels=thickness*2, rel=True, batch=True)
-        self.conv4 = conv3x3(in_channels=thickness*2, out_channels=thickness*2, pool=True)
-        self.conv_identity2 = Conv2d(in_channels=thickness, out_channels=thickness*2, kernel_size=(1, 1), stride=2)
-        self.batch2 = nn.BatchNorm2d(thickness*2)
-
-        self.conv5 = conv3x3(in_channels=thickness*2, out_channels=thickness*4, rel=True, batch=True)
-        self.conv6 = conv3x3(in_channels=thickness*4, out_channels=thickness*4, pool=True)
-        self.conv_identity3 = Conv2d(in_channels=thickness*2, out_channels=thickness*4, kernel_size=(1, 1), stride=2)
-        self.batch3 = nn.BatchNorm2d(thickness*4)
-
-        self.conv7 = conv3x3(in_channels=thickness*4, out_channels=thickness*8, rel=True, batch=True)
-        self.conv8 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-        self.conv_identity4 = Conv2d(in_channels=thickness*4, out_channels=thickness*8, kernel_size=(1, 1), stride=2)
-        self.batch4 = nn.BatchNorm2d(thickness*8)
-
-        self.conv9 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, rel=True, batch=True)
-        self.conv10 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.batch5 = nn.BatchNorm2d(thickness*8)
-
-        self.conv11 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, rel=True, batch=True)
-        self.conv12 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.batch6 = nn.BatchNorm2d(thickness*8)
-	      
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.rel = nn.PReLU()
-
-        self.fc1 = nn.Linear(thickness * 8 * 2 * 2, 1)
-
-    def forward(self, x):
-        a = x
-        x = self.conv1(x)    # 16 256 256
-        x = self.conv2(x) 
-        y = self.conv_identity1(a)
-        x = y + x
-        x = self.rel(x)
-        x = self.batch1(x)
-        
-
-        a = x         
-        x = self.conv3(x)   # 32  64  64
-        x = self.conv4(x)
-        y = self.conv_identity2(a)
-        x = y + x
-        x = self.rel(x)
-        x = self.batch2(x)
-   
-
-        a = x
-        x = self.conv5(x)   # 64  32 32
-        x = self.conv6(x) 
-        y = self.conv_identity3(a)
-        x = y + x
-        x = self.rel(x)
-        x = self.batch3(x)
-
-        a = x
-        x = self.conv7(x)   # 128 16 16
-        x = self.conv8(x) 
-        y = self.conv_identity4(a)
-        x = y + x
-        x = self.rel(x)
-        x = self.batch4(x)
-
-        a = x
-        x = self.conv9(x) # 128 8 8
-        x = self.conv10(x)
-        x = x + a
-        x = self.maxpool(x)
-        x = self.rel(x)
-        x = self.batch5(x)
-
-        a = x
-        x = self.conv11(x) # 128 8 8
-        x = self.conv12(x) # 128 4 4
-        x = x + a
-        x = self.maxpool(x)
-        x = self.rel(x)
-        x = self.batch6(x)
-
-
-        x = x.reshape(x.shape[0], -1)
-
-        x = self.fc1(x)
-        return torch.sigmoid(x)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
-net = Net(4)
-net = net.to(device=device)
-
-
-# ## CNN implementation with maxpool 4*4 in the first layer
-
-def conv3x3_maxpool4(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((4, 4)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-def conv3x3(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((2, 2)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-class Net(nn.Module):
-    ''' CNN implementation with maxpool 4*4 in the first layer'''
-	
-    def __init__(self, thickness=4):
-
-        super(Net, self).__init__()
-        self.conv1 = conv3x3(in_channels=3, out_channels=thickness)
-        self.conv2 = conv3x3_maxpool4(in_channels=thickness, out_channels=thickness, pool=True)
-
-        self.conv3 = conv3x3(in_channels=thickness, out_channels=thickness*2)
-        self.conv4 = conv3x3(in_channels=thickness*2, out_channels=thickness*2, pool=True)
-
-        self.conv5 = conv3x3(in_channels=thickness*2, out_channels=thickness*4)
-        self.conv6 = conv3x3(in_channels=thickness*4, out_channels=thickness*4, pool=True)
-
-        self.conv7 = conv3x3(in_channels=thickness*4, out_channels=thickness*8)
-        self.conv8 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv9 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.conv10 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv11 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.conv12 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.fc1 = nn.Linear(thickness * 8 * 2 * 2, 1)
-
-    def forward(self, x):
-        x = self.conv1(x)   # 16 256 256
-        x = self.conv2(x)   # 16 64 64 
-
-        x = self.conv3(x)   # 32 64 64
-        x = self.conv4(x)   # 32 32 32 
-
-        x = self.conv5(x)   # 64 32 32
-        x = self.conv6(x)   # 64 16 16
-
-        x = self.conv7(x)   # 128 16 16
-        x = self.conv8(x)   # 128 8 8
-
-        x = self.conv9(x)   # 128 8 8
-        x = self.conv10(x)  # 128 4 4
-
-        x = self.conv11(x)  # 128 4 4
-        x = self.conv12(x)  # 128 2 2
-
-        x = x.reshape(x.shape[0], -1)
-
-        x = self.fc1(x)
-        return torch.sigmoid(x)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
-net = Net(4)
-net = net.to(device=device)
-
-
-# ## CNN implementation with maxpool and without last layer
-
-def conv3x3_maxpool4(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((4, 4)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-def conv3x3(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((2, 2)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-class Net(nn.Module):
-    ''' CNN implementation with maxpool and without last layer'''
-	
-    def __init__(self, thickness=16):
-
-        super(Net, self).__init__()
-        self.conv1 = conv3x3(in_channels=3, out_channels=thickness)
-        self.conv2 = conv3x3_maxpool4(in_channels=thickness, out_channels=thickness, pool=True)
-
-        self.conv3 = conv3x3(in_channels=thickness, out_channels=thickness*2)
-        self.conv4 = conv3x3(in_channels=thickness*2, out_channels=thickness*2, pool=True)
-
-        self.conv5 = conv3x3(in_channels=thickness*2, out_channels=thickness*4)
-        self.conv6 = conv3x3(in_channels=thickness*4, out_channels=thickness*4, pool=True)
-
-        self.conv7 = conv3x3(in_channels=thickness*4, out_channels=thickness*8)
-        self.conv8 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv9 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.conv10 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv11 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-
-        self.fc1 = nn.Linear(thickness * 8 * 4 * 4, 1)
-
-    def forward(self, x):
-        x = self.conv1(x)   # 16 256 256
-        x = self.conv2(x)   # 16 64 64 
-
-        x = self.conv3(x)   # 32 64 64
-        x = self.conv4(x)   # 32 32 32 
-
-        x = self.conv5(x)   # 64 32 32
-        x = self.conv6(x)   # 64 16 16
-
-        x = self.conv7(x)   # 128 16 16
-        x = self.conv8(x)   # 128 8 8
-
-        x = self.conv9(x)   # 128 8 8
-        x = self.conv10(x)  # 128 4 4
-
-        x = self.conv11(x)  # 128 4 4
-
-        x = x.reshape(x.shape[0], -1)
-
-        x = self.fc1(x)
-        return torch.sigmoid(x)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
-net = Net(8)
-net = net.to(device=device)
 print(net)
 
-
-# ## CNN implementation without two last conv
-
-def conv3x3_maxpool4(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((4, 4)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-def conv3x3(in_channels, out_channels, pool=False, dropout=None):
-    layers = [
-        nn.Conv2d(in_channels, out_channels, (3, 3), padding=1),
-        nn.PReLU(),
-        nn.BatchNorm2d(out_channels),
-    ]
-
-    if pool:
-        layers.append(nn.MaxPool2d((2, 2)))
-
-    if dropout is not None:
-        layers.append(nn.Dropout(dropout))
-
-    return nn.Sequential(*layers)
-
-
-class Net(nn.Module):
-    ''' CNN implementation without two last conv'''
-	
-    def __init__(self, thickness=16):
-
-        super(Net, self).__init__()
-        self.conv1 = conv3x3(in_channels=1, out_channels=thickness)
-        self.conv2 = conv3x3_maxpool4(in_channels=thickness, out_channels=thickness, pool=True)
-
-        self.conv3 = conv3x3(in_channels=thickness, out_channels=thickness*2)
-        self.conv4 = conv3x3(in_channels=thickness*2, out_channels=thickness*2, pool=True)
-
-        self.conv5 = conv3x3(in_channels=thickness*2, out_channels=thickness*4)
-        self.conv6 = conv3x3(in_channels=thickness*4, out_channels=thickness*4, pool=True)
-
-        self.conv7 = conv3x3(in_channels=thickness*4, out_channels=thickness*8)
-        self.conv8 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.conv9 = conv3x3(in_channels=thickness*8, out_channels=thickness*8)
-        self.conv10 = conv3x3(in_channels=thickness*8, out_channels=thickness*8, pool=True)
-
-        self.fc1 = nn.Linear(thickness * 8 * 4 * 4, 1)
-
-    def forward(self, x):
-        x = self.conv1(x)   # 16 256 256
-        x = self.conv2(x)   # 16 64 64 
-
-        x = self.conv3(x)   # 32 64 64
-        x = self.conv4(x)   # 32 32 32 
-
-        x = self.conv5(x)   # 64 32 32
-        x = self.conv6(x)   # 64 16 16
-
-        x = self.conv7(x)   # 128 16 16
-        x = self.conv8(x)   # 128 8 8
-
-        x = self.conv9(x)   # 128 8 8
-        x = self.conv10(x)  # 128 4 4
-
-        x = x.reshape(x.shape[0], -1)
-
-        x = self.fc1(x)
-        return torch.sigmoid(x)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #training with either cpu or cuda
-net = Net(8)
-net = net.to(device=device)
-print(net)
-
-
-# ## Loss function and optimizer definition
-
+## Training the model
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 '''
 optim.SGD → implemets stochastic gradient descent
@@ -1041,164 +328,22 @@ criterion = nn.BCELoss()
 optimizer = optim.Adam(net.parameters())
 scheduler = ReduceLROnPlateau(optimizer, 'min')
 
-
-# ## Plot learning curves
-
-import plotly.express as px
-import plotly.graph_objects as go
-
-def create_plots1(epochs_train, epochs_valid, epoch_valid_metrics):
-  t = np.linspace(1, len(epochs_train), len(epochs_train))
-  x_rev = t[::-1]
-  
-  valid_scores_mean = np.mean(epochs_valid)
-  valid_scores_std = np.std(epochs_valid)
-  train_scores_mean = np.mean(epochs_train)
-  train_scores_std = np.std(epochs_train)
-
-  ci_valid = []
-  ci_train = []
-
-  for i in range(len(epochs_valid)):
-    ci_valid.append(epochs_valid[i] * valid_scores_std / valid_scores_mean)
-    ci_train.append(epochs_valid[i] * train_scores_std / train_scores_mean)
-
-  fig = go.Figure()
-  fig.add_trace(go.Scatter(x=t, y=epochs_valid,
-                      mode='lines+markers',
-                      name='Validation'))
-  
-  fig.add_trace(go.Scatter(x=t, y=epochs_train,
-                      mode='lines+markers',
-                      name='Training'))
-
-  y_u_valid = []
-  y_l_valid = []
-
-  for i in range(len(epochs_valid)):
-    y_u_valid.append(epochs_valid[i] + ci_valid[i])
-    y_l_valid.append(epochs_valid[i] - ci_valid[i])
-  y_l_valid = y_l_valid[::-1]
-
-  fig.add_trace(go.Scatter(
-    x=np.concatenate([t, x_rev]),
-    y=np.concatenate([y_u_valid, y_l_valid]),
-    fill='toself',
-    fillcolor='rgba(0,176,246,0.2)',
-    line_color='rgba(255,255,255,0)', 
-  ))
-
-  y_u_train = []
-  y_l_train = []
-
-  for i in range(len(epochs_train)):
-    y_u_train.append(epochs_train[i] + ci_train[i])
-    y_l_train.append(epochs_train[i] - ci_train[i])
-  y_l_train = y_l_train[::-1]
-
-  fig.add_trace(go.Scatter(
-    x=np.concatenate([t, x_rev]),
-    y=np.concatenate([y_u_train, y_l_train]),
-    fill='toself',
-    fillcolor='rgba(255,0,0,0.2)',
-    line_color='rgba(255,255,255,0)', 
-  ))
-
-  fig.update_layout(legend_title_text = "Phase")
-  fig.update_xaxes(title_text="Epochs")
-  fig.update_yaxes(title_text="Value")
-  fig.show()
-
-import plotly.express as px
-import plotly.graph_objects as go
-
-def create_plots(epochs_train,epochs_valid, epoch_valid_metrics):
-  t = np.linspace(1, len(epochs_train), len(epochs_train))
-  x_rev = t[::-1]
-  
-  valid_scores_mean = np.mean(epochs_valid)
-  valid_scores_std = np.std(epochs_valid)
-  train_scores_mean = np.mean(epochs_train)
-  train_scores_std = np.std(epochs_train)
-
-  ci_valid = 0.05 * valid_scores_std / valid_scores_mean
-  ci_train = 0.05 * train_scores_std / train_scores_mean
-
-  fig = go.Figure()
-  fig.add_trace(go.Scatter(x=t, y=epochs_valid,
-                      mode='lines+markers',
-                      name='Validation'))
-  
-  fig.update_traces(mode='lines')
-  
-  fig.add_trace(go.Scatter(x=t, y=epochs_train,
-                      mode='lines+markers',
-                      name='Training'))
-
-  y_u = epochs_valid + ci_valid
-  y_l = epochs_valid - ci_valid
-  y_l = y_l[::-1]
-
-  fig.add_trace(go.Scatter(
-    x=np.concatenate([t, x_rev]),
-    y=np.concatenate([y_u, y_l]),
-    fill='toself',
-    fillcolor='rgba(0,176,246,0.2)',
-    line_color='rgba(255,255,255,0)', 
-  ))
-
-  fig.update_layout(legend_title_text = "Phase")
-  fig.update_xaxes(title_text="Epochs")
-  fig.update_yaxes(type="log", title_text="Log(Value)")
-
-  fig.show()
-
-
-  fig = go.Figure()
-  fig.add_trace(go.Scatter(x=t, y=epochs_valid,
-                      mode='lines+markers',
-                      name='Validation'))
-  
-  fig.add_trace(go.Scatter(x=t, y=epochs_train,
-                      mode='lines+markers',
-                      name='Training'))
-  
-  fig.update_layout(legend_title_text = "Phase")
-  fig.update_xaxes(title_text="Epochs")
-  fig.update_yaxes(title_text="Value")
-  fig.show()
-
-
-  fig = go.Figure()
-  fig.add_trace(go.Scatter(x=t, y=epoch_valid_metrics['Accuracy'],
-                      mode='lines+markers',
-                      name='Accuracy'))
-
-  fig.add_trace(go.Scatter(x=t, y=epoch_valid_metrics['Precision'],
-                      mode='lines+markers',
-                      name='Precision'))
-  
-  fig.add_trace(go.Scatter(x=t, y=epoch_valid_metrics['Recall'],
-                      mode='lines+markers',
-                      name='Recall'))
-                      
-  fig.add_trace(go.Scatter(x=t, y=epoch_valid_metrics['F1'],
-                    mode='lines+markers',
-                    name='F1'))
-  
-  fig.update_layout(legend_title_text = "Metrics")
-  fig.update_xaxes(title_text="Epochs")
-  fig.update_yaxes(title_text="Value")
-
-  fig.show()
-
-
-# ## Save best model parameters to text file
-
-# model_directory = os.path.join('/content/drive/MyDrive' ,'Experiments/2')
-model_directory = './Experiments/VGG13_histeq_tff'
+# Define the model directory
+model_directory = './models'
 
 def write_metrics_in_file(epochs_train, epochs_valid, epoch_valid_metrics):
+  """
+    Writes the training and validation metrics (Accuracy, Precision, Recall, F1) 
+    for the current epoch into corresponding files.
+
+    Args:
+    - epochs_train (list): A list containing the training loss at each epoch.
+    - epochs_valid (list): A list containing the validation loss at each epoch.
+    - epoch_valid_metrics (defaultdict): A dictionary containing the validation metrics (Accuracy, Precision, Recall, F1) for each epoch.
+    
+    Returns:
+    - None: The function writes the metrics to files and does not return any value.
+  """
   print(epochs_train)
   print()
   print(epochs_valid)
@@ -1212,12 +357,9 @@ def write_metrics_in_file(epochs_train, epochs_valid, epoch_valid_metrics):
     f.write(f"{epochs_valid[-1]} \n")
   with open(os.path.join(model_directory, "epochs_train.txt"), 'a') as f:
     f.write(f"{epochs_train[-1]} \n")
+  
 
-from sklearn.metrics import confusion_matrix
-from collections import defaultdict
-from torch.nn.functional import normalize
-
-epochs = 15
+epochs = 80
 border = 0.7
 best_F_score = 0
 phases = ['train', 'val']
@@ -1225,27 +367,46 @@ phases = ['train', 'val']
 epochs_valid = []
 epoch_valid_metrics = defaultdict(list)
 epochs_train = []
+
+# Training loop
 for epoch in range(epochs):  # multiple walk through dataset
+    """
+    Main training and validation loop for a specified number of epochs. 
+    For each epoch, the model is trained and validated, and relevant metrics are recorded.
+    
+    Args:
+    - epochs (int): Number of total training epochs.
+
+    Returns:
+    - None: The loop trains the model and saves the best model based on the F1 score.
+    """
     loss_train = []
     loss_valid = []
     for phase in phases:
+      """
+        The inner loop where the model either trains or validates depending on the phase.
+        
+        Args:
+        - phase (str): 'train' for training phase or 'val' for validation phase.
+        
+        Returns:
+        - None: The loop computes loss, metrics, and updates model weights if in training phase.
+      """
       running_loss = 0.0
       prediction = []
-      label = [] 
-
+      label = []
+      
       for i, data in tqdm(enumerate(dataloaders[phase]), total = len(dataloaders[phase])):
-          # get input data as list [inputs, labels]
+          """
+            Processes each batch of data in the current phase (train or validation).
+            
+            Args:
+            - data (tuple): A tuple containing inputs and labels.
+
+            Returns:
+            - None: The model computes outputs, calculates loss, and updates predictions.
+          """
           inputs, labels = data
-          print(inputs.shape)
-          # raise Exception
-          #img = inputs[0].permute(1,2,0).numpy()
-          #plt.imshow(img.astype(int))
-          #plt.show()
-          #inputs = normalize(inputs, p=2.0, dim = 0)
-          #img = 255 * inputs[0].permute(1,2,0).numpy()
-          #plt.imshow(img.astype(int))
-          #plt.show()
-          #raise Exception
 
           inputs, labels = inputs.to(device), labels.to(device)
 
@@ -1299,122 +460,3 @@ for epoch in range(epochs):  # multiple walk through dataset
 
     torch.save(net.state_dict(), os.path.join(model_directory, f"{'Simple_model'}_last_model.pt"))
     write_metrics_in_file(epochs_train, epochs_valid, epoch_valid_metrics)
-
-#create_plots1(epochs_train, epochs_valid, epoch_valid_metrics)
-#plots(epochs_train, epochs_valid, epoch_valid_metrics)
-
-import os
-import plotly.express as px
-import plotly.graph_objects as go
-
-my_model_directory = os.path.join('./', 'Experiments/VGG13_histeq_tff')
-
-y_train = []
-with open(os.path.join(my_model_directory, "epochs_train.txt"), "r") as file1:
-    for line in file1:
-      y_train.append(float(line))
-
-
-y_valid = []
-with open(os.path.join(my_model_directory, "epochs_valid.txt"), "r") as file1:
-    for line in file1:
-      y_valid.append(float(line))
-
-
-t = np.linspace(1, len(y_valid), len(y_valid))
-x_rev = t[::-1]
-
-valid_scores_mean = np.mean(y_valid)
-valid_scores_std = np.std(y_valid)
-train_scores_mean = np.mean(y_train)
-train_scores_std = np.std(y_train)
-
-ci_valid = []
-ci_train = []
-
-for i in range(len(y_valid)):
-  ci_valid.append(0.1 * y_valid[i] * valid_scores_std / valid_scores_mean)
-  ci_train.append(0.1 * y_train[i] * train_scores_std / train_scores_mean)
-
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=t, y=y_valid,
-                      mode='lines+markers',
-                      name='Validation'))
-  
-fig.add_trace(go.Scatter(x=t, y=y_train,
-                      mode='lines+markers',
-                      name='Training'))
-
-y_u_valid = []
-y_l_valid = []
-
-for i in range(len(y_valid)):
-  y_u_valid.append(y_valid[i] + ci_valid[i])
-  y_l_valid.append(y_valid[i] - ci_valid[i])
-y_l_valid = y_l_valid[::-1]
-
-fig.add_trace(go.Scatter(
-  x=np.concatenate([t, x_rev]),
-  y=np.concatenate([y_u_valid, y_l_valid]),
-  fill='toself',
-  fillcolor='rgba(0,176,246,0.2)',
-  line_color='rgba(255,255,255,0)', 
-))
-
-y_u_train = []
-y_l_train = []
-
-for i in range(len(y_train)):
-  y_u_train.append(y_train[i] + ci_train[i])
-  y_l_train.append(y_train[i] - ci_train[i])
-y_l_train = y_l_train[::-1]
-
-fig.add_trace(go.Scatter(
-  x=np.concatenate([t, x_rev]),
-  y=np.concatenate([y_u_train, y_l_train]),
-  fill='toself',
-  fillcolor='rgba(255,0,0,0.2)',
-  line_color='rgba(255,255,255,0)', 
-))
-
-fig.update_layout(legend_title_text = "Phase")
-#fig.update_yaxes(type="log", title_text="Log(Value)")
-fig.update_xaxes(title_text="Epochs")
-fig.update_yaxes(title_text="Value")
-
-accuracy = []
-precision = []
-recall = []
-F1 = []
-
-with open(os.path.join(my_model_directory, "epochs_valid_metrics.txt"), "r") as file1:
-    for line in file1:
-        lst = line.split()
-        accuracy.append(float(lst[0]))
-        precision.append(float(lst[1]))
-        recall.append(float(lst[2]))
-        F1.append(float(lst[3]))    
-
-
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=t, y=accuracy,
-                      mode='lines+markers',
-                      name='Accuracy'))
-
-fig.add_trace(go.Scatter(x=t, y=precision,
-                      mode='lines+markers',
-                      name='Precision'))
-  
-fig.add_trace(go.Scatter(x=t, y=recall,
-                      mode='lines+markers',
-                      name='Recall'))
-                      
-fig.add_trace(go.Scatter(x=t, y=F1,
-                    mode='lines+markers',
-                    name='F1'))
-  
-fig.update_layout(legend_title_text = "Metrics")
-fig.update_xaxes(title_text="Epochs")
-fig.update_yaxes(title_text="Value")
-
-fig.show()
