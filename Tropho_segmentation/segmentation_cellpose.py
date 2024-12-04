@@ -14,22 +14,27 @@ import tifffile as tiff
 import matplotlib.pyplot as plt
 import argparse
 
-'''
-# Parse the arguments for the segmentation_cellpose.py script
+
 segmentation_cellpose_parse = argparse.ArgumentParser(
-    "--parent_directory",
+    description="Pass parameters into segmentation_cellpose", prog="segmentation_cellpose"
+)
+
+# Parse the arguments for the segmentation_cellpose.py script
+segmentation_cellpose_parse.add_argument(
+    '--parent_directory',
     type=str,
-    help="Filepath of the raw images to be masked.",
+    help="Filepath of the merged images to be masked and counted.",
     required=True,
 )
 
-segmentation_cellpose_parse = argparse.ArgumentParser(
-    "--channel_number",
+segmentation_cellpose_parse.add_argument(
+    '--channel_number',
     type=int,
     help="Channel of the image to use for segmentation. 1 = red, 2 = green, 3 = blue.",
-    required=True,
+    default=True,
 )
 
+'''
 segmentation_cellpose_parse = argparse.ArgumentParser(
     "--fiji_path",
     type=str,
@@ -50,18 +55,17 @@ segmentation_cellpose_parse = argparse.ArgumentParser(
     help="Maximum value for the FIJI mask thresholding.",
     required=False,
 )
-
-
-args = segmentation_cellpose_parse.parse_args()
 '''
 
+args = segmentation_cellpose_parse.parse_args()
+
+
 # Define parent directory with all image reps
-parent_directory = Path("C:/Users/laure/OneDrive - UCB-O365/ROTATION1/DDX6 Pilot/Reps 1-3 LO/TEST_DIR/TEST_1/")
-# Path(args.parent_directory)
+parent_directory = Path(args.parent_directory)
+# Path("C:/Users/laure/OneDrive - UCB-O365/ROTATION1/DDX6 Pilot/Reps 1-3 LO/TEST_DIR/TEST_1/")
 
 # Define the channel number (nuclear channel) 
-channel_number = 2
-#args.channel_number
+channel_number = args.channel_number
 
 # Initialize the CellPose model for nuclear segmentation
 model = models.Cellpose(model_type='nuclei')
@@ -114,25 +118,24 @@ def read_all_tiff_files(output_path, channel_number):
     return tiff_images
 
 
-def run_cellpose(img, channel_number, diam):
+def run_cellpose(direct, num, img, channel_number, diam):
     # Run the CellPose segmentation on the first frame
     masks, flows, styles, diams = model.eval(img, channels=[channel_number, 0], diameter= diam, flow_threshold =0.5) 
-    return("CellPose segmentation complete.")
+    # Plot and save masks 
+    # Display the result for the first frame
+    fig = plt.figure(figsize=(8, 8))
+    fig = plt.imshow(img[0], cmap='gray')
+    fig = plt.imshow(masks, alpha=0.5)
+    fig = plt.title(f'Segmented frame')
+    plt.draw()
+    # Save the masks 
+    plt.savefig(str(direct) + "/output" + str(num))
+    plt.close()
+    return(masks)
 
 
 # Run cellpose on all files in the directory
-def main(parent_directory, channel_number, model):
-    '''
-    # CHANGE THIS TO CHECK FOR SUBDIRECTORIES Get all subdirectories in the parent directory
-    subdirs = [d for d in parent_directory.iterdir() if d.is_dir()]
-    for subdir in subdirs:
-        raw_directory = os.path.join(str(subdir), "")
-        output_path = str(subdir) + "_MASKED\\"
-        # Run the dapi_actin_merge macro on each subdirectory, creating the new output path using the name of the subdir
-        run_fiji_macro(raw_directory, output_path)
-        print(f"FIJI macro complete for {raw_directory}")
-    '''
-
+def main(parent_directory, channel_number):
 
     # Run the cellpose segmentation on each new masked and merged output directory
     masked_subdirs = [d for d in parent_directory.iterdir() if (d.is_dir() and "MASKED" in str(d))]
@@ -140,7 +143,9 @@ def main(parent_directory, channel_number, model):
         tiff_images = read_all_tiff_files(str(masked_subdir), channel_number)
         data = {}
         frame_number = list(tiff_images.keys())
+        i = 0
         for img in frame_number:
+            i +=1
                 
             # Ensure the image is in the correct format (convert to float32 if necessary)
             img_iterate = tiff_images[img]
@@ -148,7 +153,7 @@ def main(parent_directory, channel_number, model):
                 img_iterate = img_iterate.astype(np.float32)
             
             # Run the CellPose segmentation on the frame
-            masks, flows, styles, diams = model.eval(img_iterate, channels=[channel_number, 0], diameter= 100.0, flow_threshold =0.5)
+            masks = run_cellpose(parent_directory, str(i), img_iterate, channel_number, 100.0)
             num_masks = len(set(masks.flatten())) - (1 if 0 in masks else 0)
 
 
@@ -163,9 +168,9 @@ def main(parent_directory, channel_number, model):
         # Save the DataFrame to an Excel file
         df.to_excel(output_excel_path, index=False)
     
-    return(f"Segmentation results saved to {output_excel_path}")
+    return("Segmentation complete.")
 
 # Run the main function when file is called
 if __name__ == "__main__":
-    main(parent_directory, channel_number, model)
+    main(parent_directory, channel_number)
 
