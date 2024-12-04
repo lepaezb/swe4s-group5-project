@@ -1,4 +1,3 @@
-// edit this macro so it runs in fiji headless 
 // Establish environment to run the fiji macro
 var ImagePlus = org.imagej.ImagePlus;
 importClass(Packages.ij.IJ);
@@ -6,6 +5,7 @@ importClass(Packages.ij.ImagePlus);
 importClass(Packages.ij.process.ImageProcessor);
 importClass(Packages.ij.plugin.ChannelSplitter);
 importClass(Packages.ij.plugin.RGBStackMerge);
+importClass(java.io.File);
 
 // Parse the arguments provided from the python input 
     // var args = getArgument();
@@ -27,31 +27,50 @@ importClass(Packages.ij.plugin.RGBStackMerge);
     // }
 //}
 
-var raw_directory = "C:/Users/laure/OneDrive - UCB-O365/ROTATION1/DDX6 Pilot/Reps 1-3 LO/TEST_DIR/TEST_1/"
-var output_path = "C:/Users/laure/OneDrive - UCB-O365/ROTATION1/DDX6 Pilot/Reps 1-3 LO/TEST_DIR/TEST_1/MASKED/"
+var parent_directory = "C:/Users/laure/OneDrive - UCB-O365/ROTATION1/DDX6 Pilot/Reps 1-3 LO/TEST_DIR/";
+
+// Function to check parent directory for multiple folders
+function getFolders(parent_direct) {
+    var folder = new File(parent_direct);
+    var allFiles = folder.list(); // Returns the list of folder names
+    var folders = [];
+    if (allFiles !== null) {
+        for (var i = 0; i < allFiles.length; i++) {
+            print(allFiles[i]);
+            var dirs = isDirectory(parent_directory + allFiles[i]);
+            if (dirs == 1 ) {
+                folders.push(parent_directory + allFiles[i]);
+            }
+        }
+    }
+    return folders;
+}
+
+function isDirectory(path) {
+    var file = new File(path);
+    // Check if the path has contents (indicating it's a directory)
+    var contents = file.list();
+     if (contents !== null && contents.length > 0) {
+        return 1;
+     } else {
+        return 0;
+     }
+}
+
 
 // Function to list files in the folder
-function getFileList(raw_directory) {
-    importClass(Packages.java.io.File);
-    var folder = new File(raw_directory);
+function getFileList(raw_direct) {
+    var folder = new File(raw_direct);
     var files = folder.list(); // Returns the list of file names
     return files;
 }
 
-// Split channels 
-// function splitChannels(imp) {
-//   imp = IJ.getImage(imp);
-//   var channels = ChannelSplitter.split(imp);
 
-//   for (var i = 0; i < channels.length; i++) {
-//     var channel = channels[i];
-//     channel.show();
-//   }
-// }
-
-
-function processFolder(raw_directory, output_path) {
-	var fileList = getFileList(raw_directory);
+function processFolder(direct) {
+	var fileList = getFileList(direct);
+    var output_path = direct + "MASKED/";
+    var dir = new File(output_path);
+    dir.mkdir();
 
 // Process files in pairs based on the last number in their names
 	for (var i = 0; i < fileList.length; i++) {
@@ -65,7 +84,7 @@ function processFolder(raw_directory, output_path) {
     		var actin_number = actin_number[1];
 
             // Convert actin file to ImagePlus Object
-            var actin_imp = IJ.openImage(raw_directory + currFile);
+            var actin_imp = IJ.openImage(direct + currFile);
 
             // Split the actin file
             var channels1 = ChannelSplitter.split(actin_imp);
@@ -81,8 +100,9 @@ function processFolder(raw_directory, output_path) {
             // Apply thresholding to the first channel of actinChannels
             IJ.run("8-bit");
             IJ.run("Threshold...", "min=5500 max=10500");
+            IJ.run("Auto Threshold", "method=Default B&W")
             IJ.run("Convert to Mask", "");
-            IJ.run("Invert LUT"); // White borders on a black background
+            // White borders on a black background
             IJ.run("Median...", "radius=3");
             IJ.run("Median...", "radius=3");
     		
@@ -97,7 +117,7 @@ function processFolder(raw_directory, output_path) {
                         if(dapi_number === actin_number){
                         
                         // Convert DAPI file to ImagePlus Object
-                        var dapi_imp = IJ.openImage(raw_directory + potentialDAPIFile);
+                        var dapi_imp = IJ.openImage(direct + potentialDAPIFile);
 
                         // Split the DAPI file, close the non DAPI channels
                             var channels2 = ChannelSplitter.split(dapi_imp);
@@ -113,12 +133,16 @@ function processFolder(raw_directory, output_path) {
                         // Merge the new images
                             var merged = RGBStackMerge.mergeChannels([channels1[0], channels2[2]], false);
                             merged.show();
+                            channels2[2].close();
+                            channels1[0].close();
 
                         // Save the processed images as TIFF
-                            IJ.saveAs("Tiff", output_path + currFile); // Save image
+                            var finalPath = (output_path + currFile);
+                            var modifiedPath = finalPath.replace(/\//g, "\\");
+                            IJ.saveAs(merged, "Tiff", modifiedPath); // Save image
                             merged.close();
 
-                        // Call processFile with the found pair: processFile(raw_directory, output_path, currFile, potentialDAPIFile);
+                        
                             break;
                         }
                          }
@@ -127,4 +151,19 @@ function processFolder(raw_directory, output_path) {
          }
 }
 
-processFolder(raw_directory, output_path)
+
+// Determine if the input is a folder or a file
+var dir = isDirectory(parent_directory);
+print(dir);
+if (dir == 1) {
+    print("in loop");
+    var raw_dirs = getFolders(parent_directory);
+    print(raw_dirs);
+    for (var i = 0; i < raw_dirs.length; i++) {
+        processFolder(raw_dirs[i] + "/");
+    }
+    } else {
+
+    processFolder(parent_directory);
+}
+

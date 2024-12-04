@@ -35,16 +35,16 @@ do
 done
 
 
-# Check that all variables have been inputted
-if [[ -z "$parent_directory" || -z "$fiji_path" ]]; then
-    echo "Error: missing required argument."
+# Check that variables have been inputted
+if [[ -z "$parent_directory" ]]; then
+    echo "Error: missing parent directory argument."
     Help
 fi
 
 
 # Return the user inputs
 echo "Parent directory: $parent_directory"
-echo "Fiji location on local machine: $fiji_path"
+# echo "Fiji location on local machine: $fiji_path"
 
 if [[ -n "$channel_number" ]]; then
     echo "Channel for segmentation in cellpose: $channel_number"
@@ -52,6 +52,7 @@ else
     channel_number=2
     echo "Channel for segmentation in cellpose: 2"
 fi
+
 
 if [[ -n "$thresh_min" ]]; then
     echo "Minimum threshold value: $thresh_min"
@@ -68,16 +69,12 @@ else
 fi  
 
 
-# Check that parent directory and fiji location exist
-if [ ! -f "$parent_directory" ] ; then
-    echo "File path: '$parent_directory' not found."
+# Check that parent directory exists
+if [[ ! -d "$parent_directory" ]] ; then
+    echo "'$parent_directory' not found."
     exit 1
 fi
 
-if [ ! -f "$fiji_path" ] ; then
-    echo "File path: '$fiji_path' not found."
-    exit 1
-fi
 
 # Function to check if a variable is an integer
 int_check() {
@@ -89,8 +86,8 @@ int_check() {
     fi
 }
 
-# Check that country_column variable is an integer
-if "$channel_number" ; then
+# Check that channel_number variable is an integer
+if [[ ! -z "$channel_number" ]] ; then
     if int_check "$channel_number" ; then
         # Check that channel number is 0,1,2,3
         if [ "$channel_number" -lt 0 ] || [ "$channel_number" -gt 3 ] ; then
@@ -111,43 +108,11 @@ if "$channel_number" ; then
     fi
 fi
 
-# Check that thresh_min variable is an integer
-if "$thresh_min" ; then
-    if int_check "$thresh_min" ; then
-        # Converts to integer
-        thresh_min=$(echo "$thresh_min" | sed 's/[^0-9]//g')
-
-        # Check if conversion worked
-        if [ ! -n "$thresh_min" ] ; then
-            echo "Conversion of "$thresh_min" to integer failed."
-            exit 1
-        else
-            echo "Conversion of "$thresh_min" to integer successful."
-        fi
-    fi
-fi
-
-if "$thresh_max" ; then
-    if int_check "$thresh_max" ; then
-        # Converts to integer
-        thresh_min=$(echo "$thresh_max" | sed 's/[^0-9]//g')
-        # Check if conversion worked
-        if [ ! -n "$thresh_min" ] ; then
-            echo "Conversion of "$thresh_max" to integer failed."
-            exit 1
-        else
-            echo "Conversion of "$thresh_max" to integer successful."
-        fi
-    fi
-fi
 
 
 # Pass arguments to segmentation_cellpose.py 
 python segmentation_cellpose.py --parent_directory "$parent_directory" \
---channel_number "$channel_number" \
---fiji_path "$fiji_path" \
---thresh_min "$thresh_min" \
---thresh_max "$thresh_max"
+--channel_number "$channel_number" 
 
 
 
