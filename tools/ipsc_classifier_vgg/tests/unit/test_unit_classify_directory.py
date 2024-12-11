@@ -2,7 +2,7 @@ import pytest
 import torch
 import numpy as np
 from PIL import Image
-from Stemcell_classifier.classify_directory import ClassificationDataSet, Net  # Replace with your module's name
+from ipsc_classifier_vgg.classify_directory import ClassificationDataSet, Net  # Replace with your module's name
 
 class TestUnit:
     """Unit tests for individual components."""

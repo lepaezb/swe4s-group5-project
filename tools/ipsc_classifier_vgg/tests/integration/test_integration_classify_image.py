@@ -1,13 +1,15 @@
 import pytest
 import torch
-from Stemcell_classifier.classify_image import Net, classify_single_image, preprocess_image
+import os
+from ipsc_classifier_vgg.classify_image import Net, classify_single_image, preprocess_image
 
 # Integration Test for the full model inference
 def test_classify_single_image():
     """Test the classify_single_image function with a real model."""
     model_path = './models/Simple_model_best_model_0.92.pt'  # Provide a valid model path
-    image_path = './model_data/H9p36/3x40_good.png'  # Provide a valid test image path
-    
+    current_dir = os.path.dirname(__file__)
+    image_path = os.path.join(current_dir, '3x40_good.png')
+
     # Assume the model is correctly loaded from the path
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Net(thickness=4)

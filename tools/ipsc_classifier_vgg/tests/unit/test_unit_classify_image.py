@@ -1,8 +1,9 @@
 import pytest
 import torch
+import os
 import numpy as np
 from torchvision import transforms
-from Stemcell_classifier.classify_image import Net, preprocess_image, conv3x3
+from ipsc_classifier_vgg.classify_image import Net, preprocess_image, conv3x3
 
 # Unit Test for conv3x3 function
 def test_conv3x3():
@@ -20,7 +21,8 @@ def test_net_initialization():
 
 def test_preprocess_image():
     """Test the image preprocessing."""
-    image_path = './model_data/H9p36/3x40_good.png'  # Provide a valid test image path
+    current_dir = os.path.dirname(__file__)
+    image_path = os.path.join(current_dir, '3x40_good.png')  # Adjust the path as needed
     image_tensor = preprocess_image(image_path)
     assert isinstance(image_tensor, torch.Tensor)
     assert image_tensor.ndimension() == 3  # Shape should be (1, H, W)

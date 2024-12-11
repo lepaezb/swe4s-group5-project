@@ -45,7 +45,9 @@ from torch.nn.functional import normalize
 photos_x10, labels_x10 = [], []
 photos_x40, labels_x40 = [], []
 
-directory = './model_data/H9p36' #for training, update path to directory containing your images 
+current_dir = os.path.dirname(__file__)
+directory = os.path.join(current_dir, '../../data/')
+#directory = 'swe4s-group5-project/data' #for training, update path to directory containing your images 
 files = os.listdir(directory)
 for file in files:
   filename = file.split('.')
