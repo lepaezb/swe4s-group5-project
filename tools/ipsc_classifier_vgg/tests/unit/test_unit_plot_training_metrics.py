@@ -2,7 +2,7 @@ import pytest
 import os
 import numpy as np
 from unittest.mock import mock_open, patch
-from Stemcell_classifier.plot_training_metrics import (
+from ipsc_classifier_vgg.plot_training_metrics import (
     read_scores,
     read_metrics,
     calculate_confidence_intervals,

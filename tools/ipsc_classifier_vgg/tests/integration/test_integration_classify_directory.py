@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import os
 from PIL import Image
-from Stemcell_classifier.classify_directory import classify_images_with_model, Net, main  # Replace with your module's name
+from ipsc_classifier_vgg.classify_directory import classify_images_with_model, Net, main  # Replace with your module's name
 
 class TestIntegration:
     """Integration tests for combined components."""
