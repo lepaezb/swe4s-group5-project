@@ -158,47 +158,111 @@ mamba install opencv-python cellpose torch torchvision numpy Pillow scikit-learn
 - `evaluate_model()`: Evaluates the trained model on a test dataset
 
 ## Cell Segmentation Tool
-
 ### Approach
-#### DAPI_ACTIN_MERGE.js
-This file was written as a macro to be used in fiji/image J. DAPI_ACTIN MERGE contains functions that will identify 
-the corresponding DAPI and ACTIN images within a folder, split each image, then merge the blue channel from the DAPI
-image and the red channel from the ACTIN image into one merged image. The new, fully merged image will be saved in a 
-new folder labeled _COMPRESSED.
+**Background:**
+Trophoblasts are the main cell type that compose the placenta. As trophoblasts differentiate, they fuse together to form multinucleated cells. Therefore, a metric to determine the level of differentiation of trophoblasts in culture is the fusion index. Fusion index is calculated across one image frame using this formula:
 
-Older microscopes store images inefficiently, saving each channel as a separate file. In order to view multiple
-channels of the same image, the researcher must open each channel image, split the images, identify the proper
-channel from the split images, then merge the correct channels from the separate images. This is highly inefficient,
-so adding a macro in fiji to aid in this process streamlines the image analysis. 
+( total number of nuclei that are present in multinucleated cells - total number of multinucleated cells)/(total number of nuclei)
 
-The formation of trophoblast cells is quantified by the number of nuclei per cell; more cells with multiple nuclei indicate
-better trophoblast formation. 
-* DAPI channel is used to identify the nuclei
-* ACTIN channel is used to identify the cell borders. 
-* The DAPI and ACTIN channels must be overlayed to identify the number of nuclei per cell.
+Thus, the researcher needs to quickly identify nuclei and cell borders. These metrics depend on stain quality and researcher ability to distinguish these features, which can vary by sample and individual. In order to alleviate these biases and issues, we developed a tool to improve cell border identification and count the total number of nuclei. 
 
-#### segmentation_cellpose.py
-Cellpose is a publicly trained, machine learning model used to identify cells in an image. Users can easily import cellpose
-and run the trained model on their own data. For the purposes of this software package:
-* cellpose will identify and count the number of nuclei in each image
-* the number of nuclei will be stored with the corresponding image name in an excel file labeled segmentation_output
-
-The idea is that the user will be able to quickly identify the number of nuclei in each image, then more efficiently determine
-how many nuclei are in each cell. 
-
-
-### Requirements
-#### DAPI_ACTIN_MERGE.js
-* This file was written to run in fiji/imageJ as a macro
-
-#### segmentation_cellpose.py 
-* cellpose
+### segmentation_cellpose.py
+**Requirements:**
 * numpy
 * pandas
 * os
 * tifffile
 * matplotlib 
 * openpyxl
+* pathlib
+* argparse
+* psutil
+* subprocess
+* cellpose: view cellpose repo for installation information https://github.com/MouseLand/cellpose
+* FIJI (IMAGEJ) required for dapi_actin_merge_macro_ARGS. Information about downloading FIJI on your local machine can be found here: https://imagej.net/software/FIJI/downloads
+
+**Purpose:**
+The formation of trophoblast cells is quantified by the percentage of multinucleated cells; more cells with multiple nuclei indicate better trophoblast formation. As previously mentioned, immunfluorescent stains can be used to determine cell borders, while DAPI or Hoechst stains are used to observe nuclei. segmentation_cellpose.py streamlines this process by creating a mask of the brightest (border) ACTIN filaments, creating a nuclei mask, and outputting the merged images and total nuclei count. 
+
+1. The ACTIN and DAPI channels are isolated for one rep
+
+2. The ACTIN images are masked to reduce/remove the filaments of lower intensity, and only display the brightest filaments. Performed in FIJI (IMAGEJ) via dapi_actin_merge_macro_ARGS.js
+
+3. The ACTIN mask and DAPI channel images are combined to create hyperstack. Images are saved in new subdirectory. Performed in FIJI (IMAGEJ) via dapi_actin_merge_macro_ARGS.js
+
+4. Cellpose, a cell segmentation machine learning model, segments the DAPI channel of the images and counts the number of total nuclei.
+
+5. The number of nuclei corresponding to each image is put into a dataframe and saved as an excel file in subdirectory.
+
+
+**Implementation:**
+
+```bash
+bash run.sh --parent_directory <path_to_images/> --channel_number <channel> --FIJI_path <path_to_FIJI/> [--thresh_min <value>] [--thresh_max <value>]
+```
+
+1. **Arguments:**
+   -parent_directory: Directory with images from each treatment and each rep. See directory organizational structure below. 
+   -channel_number: Channel to be used for cellpose segmentation 1 = red, 2 = green, 3 = blue. Default set to 1.
+   -FIJI_path:  FIJI (IMAGEJ) location on local machine
+   -thresh_min: Minimum value for threshold mask. Default set to 5500
+   -thresh_max: Maximum value for ACTIN threshold mask. Default set to 10500
+
+2. **User instructions:**
+   - Provide a parent directory with the structure below. The dapi and actin files must be named accordingly, with 
+   numbers corresponding to the rep numbers
+   - The replicates should be grouped by folder.
+   - When segmentation_cellpose.py runs the FIJI macro, the user must manually close the files and the program once the macro has completed.
+
+**Parent directory organization**
+``` bash
+parent_directory/
+├── subdir_1/     # Directory 1 for iteration (experimental condition #1)
+│   ├── rep_name_DAPI1                       
+│   ├── rep_name_ACTIN1             
+│   ├── rep_name_DAPI2                         
+│   └── rep_name_ACTIN2                       
+├── subdir_2     # Directory 2 for iteration (experimental condition #2)
+│   ├──rep_name_DAPI1                             
+│   ├──rep_name_ACTIN1             
+│   ├──rep_name_DAPI2                      
+│   └──rep_name_ACTIN2  
+└── supplemental images, documents
+
+```
+**Output:**
+* New subdirectory within the parent directory. 
+   * Naming: subdir_1_MASKED
+   * Contains:
+      * ACTIN mask images merged with the dapi channel. 
+      * cellpose segmentation masked images 
+      * excel sheet with number of nuclei per image 
+
+
+### dapi_actin_merge_macro_ARGS.js
+
+**Purpose:**
+This file was written as a macro to be called in segmentation_cellpose.py, and used in FIJI/image J. dapi_actin_merge_macro_args contains functions that will identify the corresponding DAPI and ACTIN images within a folder, split each image, threshold the ACTIN image according to the input threshold parameters (thresh_min and thresh_max), and finally merge the blue channel from the DAPI image and the threshold mask of the ACTIN image into one merged image. This new, fully merged image will be saved in a new folder labeled /MASKED. 
+
+Older microscopes store images inefficiently, saving each channel as a separate file. In order to view multiple
+channels of the same image, the researcher must open each channel image, split the images, identify the proper
+channel from the split images, then merge the correct channels from the separate images. This is highly inefficient,
+so adding a macro in FIJI to aid in this process streamlines the image analysis. 
+
+**Requirements:**
+* FIJI (IMAGEJ) is required for DAPI_ACTIN_merge_macro_ARGS. Information about downloading FIJI on your local machine can be found here: https://imagej.net/software/FIJI/downloads
+
+* In order for DAPI_ACTIN_merge_macro to function as intended, directories and images require naming specifications:
+   * parent directory (any name)
+   * subdirectory (any name)
+   * images that contain the same name, specify DAPI# or ACTIN# in the name with matching numbers for each replicate
+   * images must be in TIFF format for iteration
+
+**Outputs:**
+* New subdirectory within the parent directory. 
+   * Naming: subdir_1_MASKED
+   * Contains:
+      * ACTIN mask images merged with the dapi channel. 
 
 ## Project Structure
 
