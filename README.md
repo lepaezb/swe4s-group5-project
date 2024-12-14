@@ -9,12 +9,26 @@ Here you will find programs that will ease your analysis of iPSCs. Specifically,
    2. **ResNet**:
 
 ## Table of Contents
-
-- [Cell Classification Tool](#cell-classification-tool)
-  - [Visual Geometry Group](#visual-geometry-group)
-
----
-
+- [iPSCs Toolkit (SWE4S - Group 5 Project)](#ipscs-toolkit-swe4s---group-5-project)
+  - [Table of Contents](#table-of-contents)
+  - [Cell Classification Tool](#cell-classification-tool)
+    - [Visual Geometry Group](#visual-geometry-group)
+      - [Approach](#approach)
+      - [Implementation](#implementation)
+    - [ResNet](#resnet)
+      - [Classification](#classification)
+      - [Features](#features)
+      - [Usage](#usage)
+      - [Implementation](#implementation-1)
+  - [Cell Segmentation Tool](#cell-segmentation-tool)
+    - [Approach](#approach-1)
+    - [segmentation\_cellpose.py](#segmentation_cellposepy)
+      - [Implementation](#implementation-2)
+    - [dapi\_actin\_merge\_macro\_ARGS.js](#dapi_actin_merge_macro_argsjs)
+  - [Dependencies](#dependencies)
+  - [Project Structure](#project-structure)
+    - [Map](#map)
+    - [Key Directories and Files](#key-directories-and-files)
 
 ## Cell Classification Tool 
 
@@ -122,6 +136,7 @@ This project provides a Python script to analyze images of iPSC (induced pluripo
 - `evaluate_model()`: Evaluates the trained model on a test dataset
 
 ## Cell Segmentation Tool
+
 ### Approach
 **Background:**
 Trophoblasts are the main cell type that compose the placenta. As trophoblasts differentiate, they fuse together to form multinucleated cells. Therefore, a metric to determine the level of differentiation of trophoblasts in culture is the fusion index. Fusion index is calculated across one image frame using this formula:
@@ -146,7 +161,7 @@ The formation of trophoblast cells is quantified by the percentage of multinucle
 5. The number of nuclei corresponding to each image is put into a dataframe and saved as an excel file in subdirectory.
 
 
-**Implementation:**
+#### Implementation
 
 ```bash
 bash run.sh --parent_directory <path_to_images/> --channel_number <channel> --FIJI_path <path_to_FIJI/> [--thresh_min <value>] [--thresh_max <value>]
@@ -216,49 +231,31 @@ so adding a macro in FIJI to aid in this process streamlines the image analysis.
       * ACTIN mask images merged with the dapi channel. 
 
 ## Dependencies
-
-- PyTorch for model building and training.
-- OpenCV, PIL, scikitimage for image preprocessing.
-- pandas and numpy for data manipulation
-- matplotlib
-
-- We reccomend using mamba for package management. 
-
-- An environment can be created using the env.yaml file using mamba by running: 
-   ```sh
-   mamba env create -f env.yaml
-   ```
-- Activate the environment with 
-   ```sh
-   mamba activate env
-
-
-**Requirements:**
-- NumPy (`numpy`)
-* pandas
-* os
-* tifffile
-* matplotlib 
-* openpyxl
-* pathlib
-* argparse
-* psutil
-* subprocess
-* cellpose: view cellpose repo for installation information https://github.com/MouseLand/cellpose
-* FIJI (IMAGEJ) required for dapi_actin_merge_macro_ARGS. Information about downloading FIJI on your local machine can be found here: https://imagej.net/software/FIJI/downloads
-
+**Core Dependencies:**
 - Python 3.7+
-- OpenCV (`cv2`)
-- CellPose (`cellpose`)
-- PyTorch (`torch`)
-- Torchvision (`torchvision`)
-- NumPy (`numpy`)
-- Pillow (`PIL`)
-- Scikit-learn (`sklearn`)
+- PyTorch (torch)
+- Torchvision (torchvision)
+- NumPy (numpy)
+- OpenCV (opencv-python)
+- Pillow (PIL)
+- Scikit-learn (sklearn)
+- pandas
+- matplotlib
+- tifffile
+- openpyxl
+- pathlib
+- argparse
+- psutil
+- subprocess
+- CellPose (cellpose) (see Cellpose Repo for installation details)
+- Fiji (ImageJ) required for dapi_actin_merge_macro_ARGS.js (Download Fiji)
+
+Recommended Package Manager: 
+- mamba, a faster alternative to conda.
 
 **Installation:**
 
-- Set up the enviroment using the env.yaml file:
+  Set up the enviroment using the env.yaml file:
 ```sh
 mamba env create -f env.yaml
 mamba activate env
@@ -267,8 +264,8 @@ mamba activate env
 Alternatenly, use you can do manual installation
 ```sh
 mamba install opencv-python cellpose torch torchvision numpy Pillow scikit-learn pandas matplotlib tifffile openpyxl psutil
-
 ```
+Make sure Fiji is downloaded and accesible from your system for proper segmentation workflows
 
 ## Project Structure
 
