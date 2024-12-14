@@ -2,7 +2,7 @@
 This script automates the processing and segmentation of TIFF images using Fiji and CellPose.
 
 Usage:
-    python script.py --parent_directory <path_to_images> --channel_number <channel> --fiji_path <path_to_fiji> [--thresh_min <value>] [--thresh_max <value>]
+    bash run.sh--parent_directory <path_to_images> --channel_number <channel> --fiji_path <path_to_fiji> [--thresh_min <value>] [--thresh_max <value>]
 """
 
 # Establish the correct environment for the script
