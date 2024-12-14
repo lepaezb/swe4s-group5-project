@@ -39,9 +39,9 @@ The goal is to train a machine learning (ML) model that takes in images of induc
  - This model has been published and was adapted here for implementation as software: Mamaeva, A.; Krasnova, O.; Khvorova, I.; Kozlov, K.; Gursky, V.; Samsonova, M.; Tikhonova, O.; Neganova, I. Quality Control of Human Pluripotent Stem Cell Colonies by Computational Image Analysis Using Convolutional Neural Networks. Int. J. Mol. Sci. 2023, 24, 140. https://doi.org/10.3390/ijms24010140
     
    - Model metrics after training: 
-      ![Accuracy, Precision, Recal by Epoch](Stemcell_classifier/metrics_plots/Accuracy_F1_Recall_Precision_plot.png)
+      ![Accuracy, Precision, Recal by Epoch](tools/ipsc_classifier_vgg/metrics_plots/Accuracy_F1_Recall_Precision_plot.png)
 
-      ![Loss function, Validation, training](Stemcell_classifier/metrics_plots/training_validation_plot.png)
+      ![Loss function, Validation, training](tools/ipsc_classifier_vgg/metrics_plots/training_validation_plot.png)
 
    - Fine tuning of model can be performed using the `Training.py` module. 
    - To train on your own images simply update the directory path at the top of the module to a directory containing your images. Make sure file named for images contain ground-truth "good" of "bad" annotations (example: name_good.png or name_bad). To initiate training run: 
@@ -53,25 +53,6 @@ The goal is to train a machine learning (ML) model that takes in images of induc
       python plot_training_metrics.py
       ```
    - Alternative CNN architectures are provided in `model_architectures.py` and can be adapted into the `training.py` module and the `classify_directory.py` and `classify_image.py` modules
-
-
-4. **Libraries**: 
-
-- PyTorch for model building and training.
-- OpenCV, PIL, scikitimage for image preprocessing.
-- pandas and numpy for data manipulation
-- matplotlib
-
-- We reccomend using mamba for package management. 
-
-- An environment can be created using the StemCell.yaml file using mamba by running: 
-   ```sh
-   mamba env create -f Stemcell.yaml
-   ```
-- Activate the environment with 
-   ```sh
-   mamba activate Stemcell
-   ```
 
 #### Implementation
 - Preprocess input images (resizing, normalization).
@@ -108,29 +89,12 @@ This project provides a Python script to analyze images of iPSC (induced pluripo
 - **Dataset and DataLoader:** Utilizes PyTorch's `Dataset` and `DataLoader` for efficient data loading and batching.
 - **Model Training and Evaluation:** Includes functions for training the model and evaluating its performance on a separate test set.
 
-#### Requirements
-
-- Python 3.7+
-- OpenCV (`cv2`)
-- CellPose (`cellpose`)
-- PyTorch (`torch`)
-- Torchvision (`torchvision`)
-- NumPy (`numpy`)
-- Pillow (`PIL`)
-- Scikit-learn (`sklearn`)
-
-**Installation:**
-
-```bash
-mamba install opencv-python cellpose torch torchvision numpy Pillow scikit-learn
-```
-
 #### Usage
 
-1. **Prepare your dataset** Organize for training and testing in a directory (in this case `model_data/H9p36`).
+1. **Prepare your dataset** Organize for training and testing in a directory (in this case `data/`).
 2. **Run the script** by using the command
    ```bash
-   python SC_segmentation_classification.py
+   python tools/ipsc_classification_resnet/ipsc_classifier_resnet50.py
    ```
 3. **Output**:
    1. `model_weights.pth` script saved in the working directory (`/Stemcell_segmentation_and_classifier)
@@ -167,19 +131,6 @@ Trophoblasts are the main cell type that compose the placenta. As trophoblasts d
 Thus, the researcher needs to quickly identify nuclei and cell borders. These metrics depend on stain quality and researcher ability to distinguish these features, which can vary by sample and individual. In order to alleviate these biases and issues, we developed a tool to improve cell border identification and count the total number of nuclei. 
 
 ### segmentation_cellpose.py
-**Requirements:**
-* numpy
-* pandas
-* os
-* tifffile
-* matplotlib 
-* openpyxl
-* pathlib
-* argparse
-* psutil
-* subprocess
-* cellpose: view cellpose repo for installation information https://github.com/MouseLand/cellpose
-* FIJI (IMAGEJ) required for dapi_actin_merge_macro_ARGS. Information about downloading FIJI on your local machine can be found here: https://imagej.net/software/FIJI/downloads
 
 **Purpose:**
 The formation of trophoblast cells is quantified by the percentage of multinucleated cells; more cells with multiple nuclei indicate better trophoblast formation. As previously mentioned, immunfluorescent stains can be used to determine cell borders, while DAPI or Hoechst stains are used to observe nuclei. segmentation_cellpose.py streamlines this process by creating a mask of the brightest (border) ACTIN filaments, creating a nuclei mask, and outputting the merged images and total nuclei count. 
@@ -264,22 +215,128 @@ so adding a macro in FIJI to aid in this process streamlines the image analysis.
    * Contains:
       * ACTIN mask images merged with the dapi channel. 
 
+## Dependencies
+
+- PyTorch for model building and training.
+- OpenCV, PIL, scikitimage for image preprocessing.
+- pandas and numpy for data manipulation
+- matplotlib
+
+- We reccomend using mamba for package management. 
+
+- An environment can be created using the env.yaml file using mamba by running: 
+   ```sh
+   mamba env create -f env.yaml
+   ```
+- Activate the environment with 
+   ```sh
+   mamba activate env
+
+
+**Requirements:**
+- NumPy (`numpy`)
+* pandas
+* os
+* tifffile
+* matplotlib 
+* openpyxl
+* pathlib
+* argparse
+* psutil
+* subprocess
+* cellpose: view cellpose repo for installation information https://github.com/MouseLand/cellpose
+* FIJI (IMAGEJ) required for dapi_actin_merge_macro_ARGS. Information about downloading FIJI on your local machine can be found here: https://imagej.net/software/FIJI/downloads
+
+- Python 3.7+
+- OpenCV (`cv2`)
+- CellPose (`cellpose`)
+- PyTorch (`torch`)
+- Torchvision (`torchvision`)
+- NumPy (`numpy`)
+- Pillow (`PIL`)
+- Scikit-learn (`sklearn`)
+
+**Installation:**
+
+- Set up the enviroment using the env.yaml file:
+```sh
+mamba env create -f env.yaml
+mamba activate env
+```
+
+Alternatenly, use you can do manual installation
+```sh
+mamba install opencv-python cellpose torch torchvision numpy Pillow scikit-learn pandas matplotlib tifffile openpyxl psutil
+
+```
+
 ## Project Structure
 
+### Map
+
 ``` bash
-iPSC_toolkit/
+SWE4S-GROUP5-PROJECT/
 ├── data/
-│   ├── png/                              # images
+│   ├── images.png/                              
 ├── tools/
-│   ├── cell_segmentation/
-│   │       └── run_file.py               # python file
+│   ├── ipsc_classification_multiple_models/
+│   │       ├── results_multiple_models/
+│   │          ├── validation_accuracy_all_models.png
+│   │          ├── validation_loss_all_models.png
+│   │          ├── validation_precision_all_models.png
+│   │       ├─- ipsc_classification_multiple_models.py      
+│   ├── ipsc_classifier_resnet/     
+│   │       ├── results_resnet50/
+│   │          ├── trained_model.pth
+│   │       ├─- ipsc_classifier_resnet50.py  
 │   ├── ipsc_classifier_vgg/              
-│   │   ├── python_file.py                
-│   ├── ipsc_classifier_resnet/           
-│   │   ├── path/
-│   │   │   ├── path/                     
-├── .gitignore                            # Exclude files from git repo
-├── stemcell.yml                               # Dependencies
-├── README.md                             # README file
-└── LICENSE                               # License for the project
+│   │   ├── classify_directory.py
+│   │   ├── classify_image.py 
+│   │   ├── model_architectures.ipynb
+│   │   ├── plot_training_metrics.py
+│   │   ├── Training.py                 
+│   ├── tropho_segmentation         
+│   │   ├── dapi_actin_merge_macro_ARGS.js
+│   │   ├── run.sh
+│   │   ├── segmentation_cellpose.py                 
+├── .gitignore                            
+├── env.yaml                               
+├── README.md                             
+└── LICENSE                              
 ```
+
+### Key Directories and Files
+
+- **data/**:  
+  Contains input images and related data files. For example, `images.png/` may store sample images used for training or testing the classification or segmentation tools.
+
+- **tools/**:  
+  Houses Python scripts and notebooks that train models, evaluate performance, and run segmentation workflows. Each subdirectory corresponds to a particular tool:
+  
+  - **ipsc_classification_multiple_models/**:
+    - `ipsc_classification_multiple_models.py`: Script that trains multiple models (ResNet variants, VGG, AlexNet) on iPSC images and compares their performance.
+    - `results_multiple_models/`: Contains plots and results from running multiple models, including:
+      - `validation_accuracy_all_models.png`
+      - `validation_loss_all_models.png`
+      - `validation_precision_all_models.png`
+      
+  - **ipsc_classifier_resnet/**:
+    - `ipsc_classifier_resnet50.py`: Example script that trains a ResNet50 model for classifying iPSC colonies as 'good' or 'bad'.
+    - `results_resnet50/`: Stores trained models (`trained_model.pth`) and associated results, such as images showing actual vs predicted label.
+    
+  - **ipsc_classifier_vgg/**:
+    - `classify_directory.py`: Classifies a directory of images using a trained VGG-based model.
+    - `classify_image.py`: Classifies a single image using a trained model.
+    - `model_architectures.ipynb`: Jupyter notebook exploring different model architectures.
+    - `plot_training_metrics.py`: Utility to visualize training and validation metrics.
+    - `Training.py`: Script to train a custom CNN model (VGG-like architecture) on iPSC images.
+  
+  - **tropho_segmentation/**:
+    - `dapi_actin_merge_macro_ARGS.js`: Fiji (ImageJ) macro script for merging and thresholding fluorescent channels.
+    - `segmentation_cellpose.py`: Uses Cellpose to segment cells in TIFF images after Fiji preprocessing.
+    - `run.sh`: A helper bash script that runs the `segmentation_cellpose.py` pipeline, including the Fiji macro and Cellpose segmentation steps.
+    
+- **env.yaml**:  
+  Conda environment file specifying dependencies and versions to recreate the computational environment.
+
+
